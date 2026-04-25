@@ -9,8 +9,6 @@ Lightweight Android app that records every Bluetooth ACL connect/disconnect even
 - **Headphone / wearable usage tracking** — when did I last use those earbuds, when did I pair with that watch.
 - **Building blocks for any Bluetooth-presence-based automation** — the JSONL store + Drive CSV are easy inputs for downstream scripts, dashboards, or home-automation triggers.
 
-The reconciler itself isn't in this repo — it's a separate tool that reads the Drive CSV and a MileIQ export, overlaps drive windows with BT-connection windows (~±2 min slack), and reclassifies drives where a known-vehicle MAC was connected for >50% of the drive duration.
-
 ## How it works
 
 - Statically-registered `BroadcastReceiver` on `BluetoothDevice.ACTION_ACL_CONNECTED` / `ACTION_ACL_DISCONNECTED`. Fires at link-layer level — earlier than A2DP, earlier than anything MileIQ sees. Disk write happens via `goAsync()` on a single-thread executor so the broadcast thread is never blocked.
