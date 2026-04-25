@@ -40,6 +40,34 @@ Then:
 
 Drive scope acquired separately via Google Sign-In.
 
+## Google Cloud / Sign-In setup
+
+Sign-In + Drive upload won't work until an OAuth 2.0 client is registered:
+
+1. **Create / pick a Google Cloud project** at https://console.cloud.google.com.
+2. **Enable the Drive API** for that project (APIs & Services → Library → Google Drive API).
+3. **OAuth consent screen** — set User Type "External", add your account as a test user, add scope `.../auth/drive.file`.
+4. **Credentials → Create Credentials → OAuth client ID → Android.**
+   - Package name: `com.nestegg.btlogger`
+   - SHA-1: from your debug keystore. Get it with:
+     ```bash
+     # macOS / Linux
+     keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1
+     ```
+     ```powershell
+     # Windows PowerShell — keytool ships with the JDK bundled in Android Studio
+     & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" `
+         -list -v `
+         -keystore "$env:USERPROFILE\.android\debug.keystore" `
+         -alias androiddebugkey -storepass android -keypass android |
+         Select-String "SHA1|SHA-1"
+     ```
+5. Repeat step 4 with the release keystore SHA-1 before publishing.
+
+No `google-services.json` is needed — Google Sign-In on Android validates against the package name + SHA-1 registered in the Cloud Console.
+
+If sign-in returns `statusCode=10` (`DEVELOPER_ERROR`), the Cloud Console entry is missing or the SHA-1 doesn't match.
+
 ## Layout
 
 ```
@@ -62,7 +90,7 @@ app/src/main/
 
 ## Status
 
-Scaffold only. Receiver wiring and storage interface in place; storage/sync/UI bodies are TODO stubs. See `CLAUDE.md` for what's left.
+Storage, sync worker, Drive client, and single-screen UI are implemented. Pending: real-device end-to-end test, and the Google Cloud OAuth client setup above. See `CLAUDE.md` for design notes.
 
 ## Reconciler
 
