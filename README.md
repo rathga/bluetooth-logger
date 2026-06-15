@@ -15,6 +15,7 @@ Lightweight Android app that records every Bluetooth ACL connect/disconnect even
 - Each event is appended to a JSONL file in app-private storage: `{utc_timestamp, event_type, device_name, device_mac}`.
 - A `WorkManager` periodic job (~hourly, `NetworkType.CONNECTED`) appends new rows to a per-device monthly CSV in Google Drive (`bluetooth-log-<device-tag>-YYYY-MM.csv`). Per-device filenames mean two phones syncing under the same Google account don't race on a single shared file.
 - Idempotency: per-month last-synced byte offset persisted in `SharedPreferences`. Manual "Sync now" button in the UI re-runs the worker immediately for debugging.
+- A **setup-health check** runs when you open the app and on every sync: if the app lacks battery-optimisation exemption or the `BLUETOOTH_CONNECT` permission — the two conditions that silently stop capture — it shows an in-app banner with a one-tap fix and posts a notification, so a phone going dark surfaces even if you haven't opened the app for weeks.
 
 No foreground service required — events are push, not poll.
 
@@ -82,6 +83,8 @@ Samsung's One UI (and most non-Pixel OEMs) aggressively kill background apps. To
 
 Without these, expect occasional gaps where the OS killed the process before a broadcast woke a fresh one.
 
+The app now detects the **first** half automatically: if it isn't battery-exempt, the main screen shows a banner with a one-tap **Allow background activity** button, and the sync worker raises a notification. That covers Android's Doze exemption (step 1) but **not** Samsung's separate *Never sleeping apps* list (step 2), which has no public API — you still add that one by hand.
+
 ### Same APK on multiple phones
 
 Per-device CSV filenames mean you don't need to do anything special — install on phone 2, sign in with the same Google account, and it lands in `bluetooth-log-<device-2-tag>-YYYY-MM.csv`. The reconciler should read every `bluetooth-log-*-YYYY-MM.csv` in the Drive folder.
@@ -89,7 +92,8 @@ Per-device CSV filenames mean you don't need to do anything special — install 
 ## Permissions
 
 - `BLUETOOTH_CONNECT` — read paired-device names/addresses (Android 12+). **Required to receive ACL broadcasts at all** on Android 12+, not just to read names.
-- `POST_NOTIFICATIONS` — sync-status icon (currently unused; reserved).
+- `POST_NOTIFICATIONS` — the setup-health warning notification raised by the sync worker.
+- `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` — lets the in-app "Allow background activity" button open the system battery-exemption dialog directly.
 - `INTERNET` / `ACCESS_NETWORK_STATE` — Drive upload.
 - `RECEIVE_BOOT_COMPLETED` — receiver re-registers automatically after reboot.
 
@@ -131,19 +135,22 @@ If sign-in returns `statusCode=10` (`DEVELOPER_ERROR`), the Cloud Console entry 
 app/src/main/
 ├── AndroidManifest.xml
 ├── kotlin/com/nestegg/btlogger/
-│   ├── BtLoggerApp.kt              # Application — schedules the periodic worker
+│   ├── BtLoggerApp.kt              # Application — schedules the worker, creates the notification channel
 │   ├── receiver/BluetoothEventReceiver.kt
+│   ├── setup/                      # SetupStatus (pure issue decision), SetupChecks
+│   │                               # (live-state reader), SetupNotifier
 │   ├── storage/                    # BtEvent + EventStore (JSONL append/read)
 │   ├── sync/                       # DriveClient, DriveSyncWorker, SyncState,
 │   │                               # CsvFormat, DeviceTag
-│   └── ui/MainActivity.kt          # Sign-in, permissions, sync, recent events
+│   └── ui/MainActivity.kt          # Sign-in, permissions, sync, recent events, setup-health banner
 └── res/...
 
 app/src/test/kotlin/com/nestegg/btlogger/
+├── setup/SetupStatusTest.kt
 ├── storage/EventStoreTest.kt
 └── sync/DeviceTagTest.kt
 ```
 
 ## Status
 
-Working end-to-end on real hardware (Galaxy S20, Android 13). Storage layer + device-tag have JVM unit tests. UI shows recent events for visual verification. Drive sync verified producing per-device monthly CSVs.
+Working end-to-end on real hardware (Galaxy S20, Android 13). Storage layer + device-tag + setup-status decision have JVM unit tests. UI shows recent events for visual verification and a setup-health banner when capture is at risk. Drive sync verified producing per-device monthly CSVs.
