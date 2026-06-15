@@ -1,9 +1,13 @@
 package com.nestegg.btlogger.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableIntState
@@ -38,6 +43,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
+import com.nestegg.btlogger.setup.SetupIssue
+import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
@@ -54,7 +61,12 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
         val denied = grants.filterValues { !it }.keys
-        if (denied.isNotEmpty()) Log.w(TAG, "Permissions denied: $denied")
+        if (denied.isNotEmpty()) {
+            Log.w(TAG, "Permissions denied: $denied")
+            val permanentlyDenied = denied.any { !shouldShowRequestPermissionRationale(it) }
+            if (permanentlyDenied) openAppSettings()
+        }
+        refreshTick.intValue++
     }
 
     private val signIn = registerForActivityResult(
@@ -89,6 +101,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                         refreshTick = refreshTick.intValue,
                         onGrantPermissions = ::requestNeededPermissions,
+                        onFixBattery = ::requestBatteryExemption,
                         onSignIn = ::launchSignIn,
                         onSignOut = ::signOut,
                         onSyncNow = ::triggerSyncNow,
@@ -134,6 +147,21 @@ class MainActivity : ComponentActivity() {
         if (needed.isNotEmpty()) requestPermissions.launch(needed.toTypedArray())
     }
 
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryExemption() {
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
+    }
+
     companion object {
         private const val TAG = "BtLoggerUi"
         private val REQUIRED_PERMISSIONS = arrayOf(
@@ -148,6 +176,7 @@ private fun StatusScreen(
     modifier: Modifier,
     refreshTick: Int,
     onGrantPermissions: () -> Unit,
+    onFixBattery: () -> Unit,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onSyncNow: () -> Unit,
@@ -160,8 +189,14 @@ private fun StatusScreen(
     val lastSync = remember(refreshTick) { syncState.lastSyncMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recent(RECENT_LIMIT) }
+    val setup = remember(refreshTick) { readSetupStatus(context) }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SetupWarningBanner(
+            issues = setup.issues,
+            onFixBattery = onFixBattery,
+            onFixPermission = onGrantPermissions,
+        )
         Text("Bluetooth Logger", style = MaterialTheme.typography.headlineMedium)
         Text("Logs ACL connect/disconnect events to a CSV in Google Drive.")
 
@@ -199,6 +234,44 @@ private fun StatusScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(recent) { event -> RecentEventRow(event) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupWarningBanner(
+    issues: List<SetupIssue>,
+    onFixBattery: () -> Unit,
+    onFixPermission: () -> Unit,
+) {
+    if (issues.isEmpty()) return
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Setup needs attention", style = MaterialTheme.typography.titleMedium)
+            issues.forEach { issue ->
+                when (issue) {
+                    SetupIssue.NOT_BATTERY_EXEMPT -> {
+                        Text("Battery optimisation is on — Android may stop the app capturing connections.")
+                        Button(onClick = onFixBattery, modifier = Modifier.fillMaxWidth()) {
+                            Text("Allow background activity")
+                        }
+                    }
+                    SetupIssue.MISSING_BLUETOOTH_CONNECT -> {
+                        Text("Bluetooth permission is missing — connections won't be recorded.")
+                        Button(onClick = onFixPermission, modifier = Modifier.fillMaxWidth()) {
+                            Text("Grant Bluetooth permission")
+                        }
+                    }
+                }
             }
         }
     }
