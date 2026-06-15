@@ -6,6 +6,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
+import com.nestegg.btlogger.setup.SetupNotifier
+import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.EventStore
 import java.io.IOException
 
@@ -22,6 +24,8 @@ class DriveSyncWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        SetupNotifier.update(applicationContext, readSetupStatus(applicationContext))
+
         val state = SyncState.from(applicationContext)
         val accountName = state.accountName ?: run {
             Log.i(TAG, "No Google account configured; skipping sync")
