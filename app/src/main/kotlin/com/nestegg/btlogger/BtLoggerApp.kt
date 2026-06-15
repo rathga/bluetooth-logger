@@ -6,12 +6,14 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.nestegg.btlogger.setup.SetupNotifier
 import com.nestegg.btlogger.sync.DriveSyncWorker
 import java.util.concurrent.TimeUnit
 
 class BtLoggerApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        SetupNotifier.createChannel(this)
         schedulePeriodicSync()
     }
 
