@@ -1,0 +1,33 @@
+name: build-test
+
+# Runs the JVM unit suite and a debug assemble on whatever is about to become
+# main: every push to main and every PR targeting main. No device/emulator is
+# needed — the Domain logic is unit-tested on the JVM; on-device integration
+# (the real receiver + Drive round-trip) is verified manually.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
