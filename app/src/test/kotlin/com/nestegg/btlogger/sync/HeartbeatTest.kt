@@ -13,48 +13,97 @@ class HeartbeatTest {
     }
 
     @Test fun `does not emit before the interval has elapsed`() {
-        val now = 100 * HEARTBEAT_INTERVAL_MILLIS
-        val last = now - (HEARTBEAT_INTERVAL_MILLIS - 1)
-        assertFalse(shouldEmitHeartbeat(now, last))
+        assertFalse(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS - 1))
     }
 
     @Test fun `emits exactly at the interval boundary`() {
-        val now = 100 * HEARTBEAT_INTERVAL_MILLIS
-        val last = now - HEARTBEAT_INTERVAL_MILLIS
-        assertTrue(shouldEmitHeartbeat(now, last))
+        assertTrue(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS))
     }
 
     @Test fun `emits well past the interval`() {
-        val now = 100 * HEARTBEAT_INTERVAL_MILLIS
-        val last = now - (3 * HEARTBEAT_INTERVAL_MILLIS)
-        assertTrue(shouldEmitHeartbeat(now, last))
+        assertTrue(emittedAfter(elapsed = 3 * HEARTBEAT_INTERVAL_MILLIS))
     }
 
     @Test fun `status is OK when all preconditions are healthy`() {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = true)
-        assertEquals("OK", heartbeatStatus(setup, bluetoothAdapterEnabled = true))
+        assertEquals(HeartbeatStatus.Ok, heartbeatStatus(setup, bluetoothAdapterEnabled = true))
     }
 
     @Test fun `status flags a missing permission`() {
         val setup = SetupStatus(bluetoothConnectGranted = false, batteryExempt = true)
-        assertEquals("DEGRADED:perm-missing", heartbeatStatus(setup, bluetoothAdapterEnabled = true))
+        assertEquals(
+            HeartbeatStatus.Degraded(listOf(DegradedReason.MISSING_BLUETOOTH_CONNECT)),
+            heartbeatStatus(setup, bluetoothAdapterEnabled = true),
+        )
     }
 
     @Test fun `status flags a missing doze exemption`() {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = false)
-        assertEquals("DEGRADED:no-doze-exemption", heartbeatStatus(setup, bluetoothAdapterEnabled = true))
+        assertEquals(
+            HeartbeatStatus.Degraded(listOf(DegradedReason.NOT_BATTERY_EXEMPT)),
+            heartbeatStatus(setup, bluetoothAdapterEnabled = true),
+        )
     }
 
     @Test fun `status flags a disabled adapter`() {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = true)
-        assertEquals("DEGRADED:bt-off", heartbeatStatus(setup, bluetoothAdapterEnabled = false))
+        assertEquals(
+            HeartbeatStatus.Degraded(listOf(DegradedReason.BLUETOOTH_OFF)),
+            heartbeatStatus(setup, bluetoothAdapterEnabled = false),
+        )
     }
 
     @Test fun `status lists every failing precondition in a fixed order`() {
         val setup = SetupStatus(bluetoothConnectGranted = false, batteryExempt = false)
         assertEquals(
-            "DEGRADED:perm-missing+no-doze-exemption+bt-off",
+            HeartbeatStatus.Degraded(
+                listOf(
+                    DegradedReason.MISSING_BLUETOOTH_CONNECT,
+                    DegradedReason.NOT_BATTERY_EXEMPT,
+                    DegradedReason.BLUETOOTH_OFF,
+                ),
+            ),
             heartbeatStatus(setup, bluetoothAdapterEnabled = false),
         )
+    }
+
+    @Test fun `renders the healthy token`() {
+        assertEquals("OK", CsvFormat.heartbeatStatusToken(HeartbeatStatus.Ok))
+    }
+
+    @Test fun `renders a single degraded token`() {
+        assertEquals(
+            "DEGRADED:perm-missing",
+            CsvFormat.heartbeatStatusToken(HeartbeatStatus.Degraded(listOf(DegradedReason.MISSING_BLUETOOTH_CONNECT))),
+        )
+    }
+
+    @Test fun `renders every degraded token joined in order`() {
+        assertEquals(
+            "DEGRADED:perm-missing+no-doze-exemption+bt-off",
+            CsvFormat.heartbeatStatusToken(
+                HeartbeatStatus.Degraded(
+                    listOf(
+                        DegradedReason.MISSING_BLUETOOTH_CONNECT,
+                        DegradedReason.NOT_BATTERY_EXEMPT,
+                        DegradedReason.BLUETOOTH_OFF,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test fun `renders a gapped pair without an empty separator`() {
+        assertEquals(
+            "DEGRADED:perm-missing+bt-off",
+            CsvFormat.heartbeatStatusToken(
+                HeartbeatStatus.Degraded(listOf(DegradedReason.MISSING_BLUETOOTH_CONNECT, DegradedReason.BLUETOOTH_OFF)),
+            ),
+        )
+    }
+
+    private fun emittedAfter(elapsed: Long): Boolean {
+        val now = 30L * HEARTBEAT_INTERVAL_MILLIS
+        return shouldEmitHeartbeat(now, lastRecordMillis = now - elapsed)
     }
 }

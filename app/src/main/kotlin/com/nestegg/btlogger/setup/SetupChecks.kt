@@ -20,7 +20,6 @@ fun readSetupStatus(context: Context): SetupStatus {
     )
 }
 
-/** True when the Bluetooth adapter is present and currently enabled. */
 fun isBluetoothAdapterEnabled(context: Context): Boolean {
     val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
     return manager?.adapter?.isEnabled == true

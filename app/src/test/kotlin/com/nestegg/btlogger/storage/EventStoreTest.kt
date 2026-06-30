@@ -138,11 +138,12 @@ class EventStoreTest {
         val s = store()
         s.append(BtEvent(utc(2026, 4, 25, 9, 0), EventType.HEARTBEAT, "DEGRADED:bt-off", ""))
         s.append(BtEvent(utc(2026, 4, 26, 9, 0), EventType.CONNECTED, "Car", "AA:BB:CC:00:00:01"))
-        s.append(BtEvent(utc(2026, 4, 27, 9, 0), EventType.HEARTBEAT, "OK", ""))
+        val newest = utc(2026, 4, 27, 9, 0)
+        s.append(BtEvent(newest, EventType.HEARTBEAT, "OK", ""))
 
         val beat = s.lastHeartbeat()
         assertEquals("OK", beat?.deviceName)
-        assertEquals(utc(2026, 4, 27, 9, 0), beat?.utcTimestamp)
+        assertEquals(newest, beat?.utcTimestamp)
     }
 
     private fun utc(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long {

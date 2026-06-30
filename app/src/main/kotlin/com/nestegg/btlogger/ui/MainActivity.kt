@@ -292,15 +292,15 @@ private const val RECENT_LIMIT = 10
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
-private val timestampFormatter: DateFormat =
+private val statusTimestampFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
 private fun formatLastSync(millis: Long): String =
     if (millis == 0L) "never"
-    else timestampFormatter.format(Date(millis))
+    else statusTimestampFormatter.format(Date(millis))
 
 private fun formatHeartbeat(event: BtEvent?): String {
     if (event == null) return "never"
-    val time = timestampFormatter.format(Date(event.utcTimestamp))
-    return "$time — ${event.deviceName ?: "OK"}"
+    val time = statusTimestampFormatter.format(Date(event.utcTimestamp))
+    return "$time — ${event.deviceName ?: "unknown"}"
 }

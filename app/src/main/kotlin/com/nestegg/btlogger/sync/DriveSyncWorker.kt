@@ -77,17 +77,13 @@ class DriveSyncWorker(
         }
     }
 
-    /**
-     * Write a liveness heartbeat if nothing has been logged for [HEARTBEAT_INTERVAL_MILLIS].
-     * Runs before the account / empty-log early-outs so the first-ever heartbeat is
-     * created even on a fresh install; it uploads on this or a later sync run.
-     */
     private fun maybeWriteHeartbeat(store: EventStore, setup: SetupStatus) {
         val now = System.currentTimeMillis()
         if (!shouldEmitHeartbeat(now, store.lastRecordMillis())) return
         val status = heartbeatStatus(setup, isBluetoothAdapterEnabled(applicationContext))
-        store.append(BtEvent(now, EventType.HEARTBEAT, status, ""))
-        Log.i(TAG, "Wrote liveness heartbeat: $status")
+        val statusToken = CsvFormat.heartbeatStatusToken(status)
+        store.append(BtEvent(now, EventType.HEARTBEAT, statusToken, ""))
+        Log.i(TAG, "Wrote liveness heartbeat: $statusToken")
     }
 
     companion object {
