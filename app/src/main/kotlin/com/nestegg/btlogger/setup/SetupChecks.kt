@@ -1,6 +1,7 @@
 package com.nestegg.btlogger.setup
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.PowerManager
@@ -17,4 +18,10 @@ fun readSetupStatus(context: Context): SetupStatus {
         bluetoothConnectGranted = bluetoothConnectGranted,
         batteryExempt = batteryExempt,
     )
+}
+
+/** True when the Bluetooth adapter is present and currently enabled. */
+fun isBluetoothAdapterEnabled(context: Context): Boolean {
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    return manager?.adapter?.isEnabled == true
 }
