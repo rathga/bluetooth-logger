@@ -10,6 +10,7 @@ data class BtEvent(
 enum class EventType {
     CONNECTED,
     DISCONNECTED,
+    HEARTBEAT,
 }
 
 internal fun BtEvent.toJsonLine(): String = buildString {

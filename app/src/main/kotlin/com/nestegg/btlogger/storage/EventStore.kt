@@ -45,17 +45,32 @@ class EventStore internal constructor(private val baseDir: File) {
         }
 
     /**
-     * Most recent [limit] events, newest first. Reads month files from newest to
-     * oldest until the cap is reached, so a normal call only touches the current
-     * month's file.
+     * Most recent [limit] events of any type, newest first. Reads month files
+     * from newest to oldest until the cap is reached, so a normal call only
+     * touches the current month's file.
      */
-    fun recent(limit: Int): List<BtEvent> {
+    fun recent(limit: Int): List<BtEvent> = recentMatching(limit) { true }
+
+    /** Most recent [limit] real connect/disconnect events (heartbeats excluded), newest first. */
+    fun recentConnections(limit: Int): List<BtEvent> =
+        recentMatching(limit) { it.eventType != EventType.HEARTBEAT }
+
+    /** UTC millis of the newest record of any type, or null if the log is empty. */
+    fun lastRecordMillis(): Long? = recent(1).firstOrNull()?.utcTimestamp
+
+    /** The most recent heartbeat record, or null if none has been written. */
+    fun lastHeartbeat(): BtEvent? =
+        recentMatching(1) { it.eventType == EventType.HEARTBEAT }.firstOrNull()
+
+    private fun recentMatching(limit: Int, predicate: (BtEvent) -> Boolean): List<BtEvent> {
         if (limit <= 0) return emptyList()
         val out = ArrayDeque<BtEvent>(limit)
         for (yearMonth in months().reversed()) {
             val lines = monthFile(yearMonth).readLines()
             for (i in lines.indices.reversed()) {
-                parseJsonLineOrNull(lines[i])?.let(out::addLast)
+                val event = parseJsonLineOrNull(lines[i]) ?: continue
+                if (!predicate(event)) continue
+                out.addLast(event)
                 if (out.size >= limit) return out.toList()
             }
         }
