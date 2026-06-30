@@ -1,0 +1,6 @@
+# The Gradle wrapper script runs on the Linux CI runner — it must stay LF, or
+# the shebang breaks ("bad interpreter"). The .bat is Windows-only (CRLF), and
+# the wrapper jar is binary.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
