@@ -44,12 +44,10 @@ class EventStore internal constructor(private val baseDir: File) {
             monthFile(yearMonth).useLines { it.count() }
         }
 
-    fun recent(limit: Int): List<BtEvent> = recentMatching(limit) { true }
-
     fun recentConnections(limit: Int): List<BtEvent> =
         recentMatching(limit) { it.eventType != EventType.HEARTBEAT }
 
-    fun lastRecordMillis(): Long? = recent(1).firstOrNull()?.utcTimestamp
+    fun lastRecordMillis(): Long? = recentMatching(1) { true }.firstOrNull()?.utcTimestamp
 
     fun lastHeartbeat(): BtEvent? =
         recentMatching(1) { it.eventType == EventType.HEARTBEAT }.firstOrNull()

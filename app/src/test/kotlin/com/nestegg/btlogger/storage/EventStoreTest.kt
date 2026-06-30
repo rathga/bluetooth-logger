@@ -86,22 +86,22 @@ class EventStoreTest {
         assertEquals(event, parseJsonLineOrNull(line))
     }
 
-    @Test fun `recent returns the newest events first across months`() {
+    @Test fun `recentConnections returns the newest events first across months`() {
         val s = store()
         s.append(BtEvent(utc(2026, 3, 31, 23, 0), EventType.CONNECTED, "Old", "AA:BB:CC:00:00:01"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 0), EventType.CONNECTED, "New1", "AA:BB:CC:00:00:02"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 1), EventType.DISCONNECTED, "New2", "AA:BB:CC:00:00:03"))
 
-        val recent = s.recent(2)
+        val recent = s.recentConnections(2)
         assertEquals(listOf("New2", "New1"), recent.map { it.deviceName })
     }
 
-    @Test fun `recent reaches into earlier months when current month is short`() {
+    @Test fun `recentConnections reaches into earlier months when current month is short`() {
         val s = store()
         s.append(BtEvent(utc(2026, 3, 31, 23, 0), EventType.CONNECTED, "Old", "AA:BB:CC:00:00:01"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 0), EventType.CONNECTED, "New", "AA:BB:CC:00:00:02"))
 
-        val recent = s.recent(5)
+        val recent = s.recentConnections(5)
         assertEquals(listOf("New", "Old"), recent.map { it.deviceName })
     }
 

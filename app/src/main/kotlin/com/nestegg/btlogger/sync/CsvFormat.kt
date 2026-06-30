@@ -31,10 +31,10 @@ internal object CsvFormat {
 
     fun heartbeatStatusToken(status: HeartbeatStatus): String = when (status) {
         HeartbeatStatus.Ok -> "OK"
-        is HeartbeatStatus.Degraded -> "DEGRADED:" + status.reasons.joinToString("+", transform = ::degradedToken)
+        is HeartbeatStatus.Degraded -> "DEGRADED:" + status.reasons.joinToString("+", transform = ::reasonToken)
     }
 
-    private fun degradedToken(reason: DegradedReason): String = when (reason) {
+    private fun reasonToken(reason: DegradedReason): String = when (reason) {
         DegradedReason.MISSING_BLUETOOTH_CONNECT -> "perm-missing"
         DegradedReason.NOT_BATTERY_EXEMPT -> "no-doze-exemption"
         DegradedReason.BLUETOOTH_OFF -> "bt-off"

@@ -93,7 +93,7 @@ class HeartbeatTest {
         )
     }
 
-    @Test fun `renders a gapped pair without an empty separator`() {
+    @Test fun `renders non-adjacent reasons joined by a single separator`() {
         assertEquals(
             "DEGRADED:perm-missing+bt-off",
             CsvFormat.heartbeatStatusToken(
