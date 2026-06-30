@@ -86,22 +86,22 @@ class EventStoreTest {
         assertEquals(event, parseJsonLineOrNull(line))
     }
 
-    @Test fun `recent returns the newest events first across months`() {
+    @Test fun `recentConnections returns the newest events first across months`() {
         val s = store()
         s.append(BtEvent(utc(2026, 3, 31, 23, 0), EventType.CONNECTED, "Old", "AA:BB:CC:00:00:01"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 0), EventType.CONNECTED, "New1", "AA:BB:CC:00:00:02"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 1), EventType.DISCONNECTED, "New2", "AA:BB:CC:00:00:03"))
 
-        val recent = s.recent(2)
+        val recent = s.recentConnections(2)
         assertEquals(listOf("New2", "New1"), recent.map { it.deviceName })
     }
 
-    @Test fun `recent reaches into earlier months when current month is short`() {
+    @Test fun `recentConnections reaches into earlier months when current month is short`() {
         val s = store()
         s.append(BtEvent(utc(2026, 3, 31, 23, 0), EventType.CONNECTED, "Old", "AA:BB:CC:00:00:01"))
         s.append(BtEvent(utc(2026, 4, 1, 0, 0), EventType.CONNECTED, "New", "AA:BB:CC:00:00:02"))
 
-        val recent = s.recent(5)
+        val recent = s.recentConnections(5)
         assertEquals(listOf("New", "Old"), recent.map { it.deviceName })
     }
 
@@ -110,6 +110,40 @@ class EventStoreTest {
         val parsed = parseJsonLineOrNull(event.toJsonLine())
         assertEquals(event, parsed)
         assertNull(parsed?.deviceName)
+    }
+
+    @Test fun `lastRecordMillis is null for an empty store`() {
+        assertNull(store().lastRecordMillis())
+    }
+
+    @Test fun `lastRecordMillis returns the newest timestamp including heartbeats`() {
+        val s = store()
+        s.append(BtEvent(utc(2026, 4, 25, 9, 0), EventType.CONNECTED, "Car", "AA:BB:CC:00:00:01"))
+        val beat = utc(2026, 4, 26, 9, 0)
+        s.append(BtEvent(beat, EventType.HEARTBEAT, "OK", ""))
+        assertEquals(beat, s.lastRecordMillis())
+    }
+
+    @Test fun `recentConnections excludes heartbeat records`() {
+        val s = store()
+        s.append(BtEvent(utc(2026, 4, 25, 9, 0), EventType.CONNECTED, "Car", "AA:BB:CC:00:00:01"))
+        s.append(BtEvent(utc(2026, 4, 25, 10, 0), EventType.HEARTBEAT, "OK", ""))
+        s.append(BtEvent(utc(2026, 4, 25, 11, 0), EventType.DISCONNECTED, "Car", "AA:BB:CC:00:00:01"))
+
+        val recent = s.recentConnections(10)
+        assertEquals(listOf(EventType.DISCONNECTED, EventType.CONNECTED), recent.map { it.eventType })
+    }
+
+    @Test fun `lastHeartbeat returns the most recent heartbeat`() {
+        val s = store()
+        s.append(BtEvent(utc(2026, 4, 25, 9, 0), EventType.HEARTBEAT, "DEGRADED:bt-off", ""))
+        s.append(BtEvent(utc(2026, 4, 26, 9, 0), EventType.CONNECTED, "Car", "AA:BB:CC:00:00:01"))
+        val newest = utc(2026, 4, 27, 9, 0)
+        s.append(BtEvent(newest, EventType.HEARTBEAT, "OK", ""))
+
+        val beat = s.lastHeartbeat()
+        assertEquals("OK", beat?.deviceName)
+        assertEquals(newest, beat?.utcTimestamp)
     }
 
     private fun utc(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long {

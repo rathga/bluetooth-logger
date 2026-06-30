@@ -44,18 +44,23 @@ class EventStore internal constructor(private val baseDir: File) {
             monthFile(yearMonth).useLines { it.count() }
         }
 
-    /**
-     * Most recent [limit] events, newest first. Reads month files from newest to
-     * oldest until the cap is reached, so a normal call only touches the current
-     * month's file.
-     */
-    fun recent(limit: Int): List<BtEvent> {
+    fun recentConnections(limit: Int): List<BtEvent> =
+        recentMatching(limit) { it.eventType != EventType.HEARTBEAT }
+
+    fun lastRecordMillis(): Long? = recentMatching(1) { true }.firstOrNull()?.utcTimestamp
+
+    fun lastHeartbeat(): BtEvent? =
+        recentMatching(1) { it.eventType == EventType.HEARTBEAT }.firstOrNull()
+
+    private fun recentMatching(limit: Int, predicate: (BtEvent) -> Boolean): List<BtEvent> {
         if (limit <= 0) return emptyList()
         val out = ArrayDeque<BtEvent>(limit)
         for (yearMonth in months().reversed()) {
             val lines = monthFile(yearMonth).readLines()
             for (i in lines.indices.reversed()) {
-                parseJsonLineOrNull(lines[i])?.let(out::addLast)
+                val event = parseJsonLineOrNull(lines[i]) ?: continue
+                if (!predicate(event)) continue
+                out.addLast(event)
                 if (out.size >= limit) return out.toList()
             }
         }

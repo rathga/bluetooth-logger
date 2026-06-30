@@ -7,8 +7,12 @@ import androidx.work.WorkerParameters
 import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.nestegg.btlogger.setup.SetupNotifier
+import com.nestegg.btlogger.setup.SetupStatus
+import com.nestegg.btlogger.setup.isBluetoothAdapterEnabled
 import com.nestegg.btlogger.setup.readSetupStatus
+import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
+import com.nestegg.btlogger.storage.EventType
 import java.io.IOException
 
 /**
@@ -24,7 +28,11 @@ class DriveSyncWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        SetupNotifier.update(applicationContext, readSetupStatus(applicationContext))
+        val setup = readSetupStatus(applicationContext)
+        SetupNotifier.update(applicationContext, setup)
+
+        val store = EventStore(applicationContext)
+        maybeWriteHeartbeat(store, setup)
 
         val state = SyncState.from(applicationContext)
         val accountName = state.accountName ?: run {
@@ -32,7 +40,6 @@ class DriveSyncWorker(
             return Result.success()
         }
 
-        val store = EventStore(applicationContext)
         val months = store.months()
         if (months.isEmpty()) return Result.success()
 
@@ -68,6 +75,15 @@ class DriveSyncWorker(
             Log.e(TAG, "Sync failed", e)
             Result.failure()
         }
+    }
+
+    private fun maybeWriteHeartbeat(store: EventStore, setup: SetupStatus) {
+        val now = System.currentTimeMillis()
+        if (!shouldEmitHeartbeat(now, store.lastRecordMillis())) return
+        val status = heartbeatStatus(setup, isBluetoothAdapterEnabled(applicationContext))
+        val statusToken = CsvFormat.heartbeatStatusToken(status)
+        store.append(BtEvent(now, EventType.HEARTBEAT, statusToken, ""))
+        Log.i(TAG, "Wrote liveness heartbeat: $statusToken")
     }
 
     companion object {

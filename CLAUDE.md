@@ -35,25 +35,27 @@ Idempotency via per-month last-synced-byte-offset in `SharedPreferences`. Per-de
 - `BtLoggerApp.kt` — `Application`. Schedules the periodic worker (KEEP policy); creates the setup-health notification channel.
 - `receiver/BluetoothEventReceiver.kt` — push-driven event capture; goAsync to a single-thread `BtLogger-disk` executor so the broadcast thread never blocks on disk.
 - `setup/SetupStatus.kt` — pure issue decision (`bluetoothConnectGranted`/`batteryExempt` → `issues`/`isHealthy`); the only unit-tested piece of this feature.
-- `setup/SetupChecks.kt` — `readSetupStatus(context)`: live-state reader (PowerManager battery-exemption + `BLUETOOTH_CONNECT` grant). Infra, not unit-tested.
+- `setup/SetupChecks.kt` — `readSetupStatus(context)`: live-state reader (PowerManager battery-exemption + `BLUETOOTH_CONNECT` grant). Also exposes `isBluetoothAdapterEnabled(context)` for the heartbeat verdict. Infra, not unit-tested.
 - `setup/SetupNotifier.kt` — channel creation + post/cancel a warning notification from the worker; guarded by `areNotificationsEnabled()`.
 - `storage/BtEvent.kt` — data class + hand-rolled JSON encode/decode.
-- `storage/EventStore.kt` — JSONL append + tail-read with per-month byte offset; constructor accepts a `File` baseDir for JVM tests.
+- `storage/EventStore.kt` — JSONL append + tail-read with per-month byte offset; constructor accepts a `File` baseDir for JVM tests. Also exposes `lastRecordMillis`, `lastHeartbeat`, `recentConnections`.
+- `sync/Heartbeat.kt` — pure domain: `shouldEmitHeartbeat` (24h-since-last-record) + `heartbeatStatus` (precondition verdict). Unit-tested.
 - `sync/DriveClient.kt` — `appendCsvRows(yearMonth, deviceTag, header, rows)`; Drive `files.update` re-upload.
-- `sync/DriveSyncWorker.kt` — iterates months, uploads new chunks, persists offset; distinct handling for `UserRecoverableAuthIOException`.
+- `sync/DriveSyncWorker.kt` — iterates months, uploads new chunks, persists offset; distinct handling for `UserRecoverableAuthIOException`. Emits a liveness heartbeat before its early-outs.
 - `sync/SyncState.kt` — `SharedPreferences` wrapper (account name, per-month offsets, last-sync timestamp).
 - `sync/CsvFormat.kt` — ISO-8601 UTC + RFC 4180 row formatter.
 - `sync/DeviceTag.kt` — stable per-device suffix (`<sanitised-model>-<8-char-android-id>`).
-- `ui/MainActivity.kt` — single screen: sign-in, permission grant, manual sync, sign out, recent events list (last 10); setup-health banner with one-tap fixes (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog; app-settings deep-link on permanent permission denial).
+- `ui/MainActivity.kt` — single screen: sign-in, permission grant, manual sync, sign out, recent connect/disconnect list (last 10, heartbeats excluded), "Last alive check" line from the most recent heartbeat; setup-health banner with one-tap fixes (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog; app-settings deep-link on permanent permission denial).
 
 `app/src/test/kotlin/com/nestegg/btlogger/`
 - `setup/SetupStatusTest.kt` — issue-decision truth table (both ok / each missing / both missing).
-- `storage/EventStoreTest.kt` — append, multi-month bucketing, offset advance, partial-line tolerance, missing file, `recent()`, name escaping.
+- `storage/EventStoreTest.kt` — append, multi-month bucketing, offset advance, partial-line tolerance, missing file, name escaping; `recentConnections` (newest-first, multi-month reach, heartbeat-excluding), `lastRecordMillis`/`lastHeartbeat` (heartbeat-aware).
+- `sync/HeartbeatTest.kt` — decision truth table (null/<24h/boundary/>24h) + verdict mapping (each token, fixed order).
 - `sync/DeviceTagTest.kt` — model sanitisation, truncation, fallbacks.
 
 ## Implementation status
 
-**Working end-to-end on real hardware** (Galaxy S20 Android 13 + a second phone). All 7 original working-order steps done; per-device filenames added afterwards. Setup-health warning (in-app banner + worker notification for missing battery exemption / `BLUETOOTH_CONNECT`) added Jun 2026 and verified on `sm-g981b`.
+**Working end-to-end on real hardware** (Galaxy S20 Android 13 + a second phone). All 7 original working-order steps done; per-device filenames added afterwards. Setup-health warning (in-app banner + worker notification for missing battery exemption / `BLUETOOTH_CONNECT`) added Jun 2026 and verified on `sm-g981b`. Liveness heartbeat added Jun 2026 (see `docs/superpowers/plans/2026-06-30-heartbeat.md`); on-device verification pending.
 
 If something here drifts, **trust git, not this section** — `git log --oneline` is the source of truth for what landed when.
 
@@ -69,6 +71,7 @@ If something here drifts, **trust git, not this section** — `git log --oneline
 - **Drive REST has no real append.** We re-upload the whole file via `files.update`. For monthly CSVs the size stays small (<200 KB).
 - **Per-device CSV filenames matter** — `drive.file` scope means two phones on the same Google account otherwise race on a single shared file. Filename includes `<sanitised-model>-<8-char-android-id>` (see `DeviceTag.kt`). Reconciler should glob `bluetooth-log-*-YYYY-MM.csv`.
 - **Samsung battery saver kills the app** unless the user explicitly excludes it (Settings → Apps → Battery → Unrestricted, AND Battery → Background usage limits → Never sleeping apps). Without this, expect gaps. README documents the steps. The app now self-warns (banner + worker notification) when it loses the **Doze exemption**, but it cannot detect Samsung's separate *Never sleeping apps* list (no public API) — that step is still manual. Confirmed failure mode (Jun 2026, `sm-g981b`): an idle non-exempt app deep-sleeps, Android stops delivering ACL broadcasts (the BT *stack* still connects — visible in `dumpsys bluetooth_manager` A2DP StateMachine history), yet the hourly WorkManager sync still runs occasionally, so the CSV freezes with no visible symptom. `BLUETOOTH_CONNECT` stays granted throughout — don't assume permission loss.
+- **Liveness heartbeat** — during ≥24h of Bluetooth silence the hourly worker appends a `HEARTBEAT` row (`event_type=HEARTBEAT`, verdict in `device_name`, empty MAC) so the reconciler can tell genuine no-car-use from a logger fault. It proves the logger was *alive* and capture *preconditions* were green (`OK`) or not (e.g. `DEGRADED:perm-missing+no-doze-exemption+bt-off`, failing tokens joined by `+`) — **never that capture succeeded** (the deep-sleep case decouples WorkManager from ACL delivery). The reconciler must exclude `HEARTBEAT` rows from drive-matching/dedup; **heartbeat absent across a gap = total death, gap untrustworthy.**
 - **OAuth "Testing" mode blocks anyone not on the test-users list** — including the developer's own account. Symptom: "access blocked, app has not completed verification". Add the account in the OAuth consent screen → Test users.
 - **`statusCode=10` (`DEVELOPER_ERROR`) at sign-in** = the OAuth Android client in Cloud Console is missing or its SHA-1 doesn't match the signing keystore.
 

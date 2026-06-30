@@ -19,6 +19,29 @@ Lightweight Android app that records every Bluetooth ACL connect/disconnect even
 
 No foreground service required — events are push, not poll.
 
+## Liveness heartbeat
+
+A gap in the CSV is otherwise ambiguous: "the car wasn't used" and "the logger was dead" look identical, which breaks reconciliation when a car sits unused for days. To disambiguate, the sync worker writes a daily "I'm alive" marker during Bluetooth silence:
+
+- **When:** if no record (a real BT event *or* a previous heartbeat) has been written for ≥ 24h, the next hourly sync appends one heartbeat and uploads it. Because the heartbeat is itself a record, it resets the clock — so you get exactly one per silent day, and **none** on days with real activity.
+- **Row shape:** `event_type=HEARTBEAT`, the verdict in `device_name`, an empty `device_mac`. The CSV header and the schema of real connect/disconnect rows are unchanged.
+- **Verdict (`device_name`):**
+  - `OK` — every on-device precondition for capture was healthy.
+  - `DEGRADED:<tokens>` — one or more preconditions were failing, tokens joined by `+` in a fixed order:
+    - `perm-missing` — `BLUETOOTH_CONNECT` not granted.
+    - `no-doze-exemption` — the app is not exempt from battery optimisation (Doze).
+    - `bt-off` — the Bluetooth adapter was disabled.
+
+    e.g. `DEGRADED:perm-missing+no-doze-exemption`.
+
+A heartbeat proves the logger was **alive**, never that capture **succeeded** — the documented Samsung deep-sleep case stops ACL delivery while WorkManager still runs, so an `OK` heartbeat can coincide with missed connections.
+
+### Reconciler contract
+
+- The Drive glob is unchanged (`bluetooth-log-*-YYYY-MM.csv`).
+- Rows with `event_type=HEARTBEAT` are **liveness markers, not BT events** — exclude them from drive-matching and dedup.
+- Read the verdict as trust, not guarantee: an `OK` heartbeat across a gap means the gap is trustworthy no-car-use; a `DEGRADED:<tokens>` heartbeat means the logger was alive but capture preconditions were compromised that day, so treat a surrounding gap with suspicion; a **heartbeat absent across a gap** means total death — the gap is untrustworthy.
+
 ## Build
 
 Requires:
@@ -141,14 +164,15 @@ app/src/main/
 │   │                               # (live-state reader), SetupNotifier
 │   ├── storage/                    # BtEvent + EventStore (JSONL append/read)
 │   ├── sync/                       # DriveClient, DriveSyncWorker, SyncState,
-│   │                               # CsvFormat, DeviceTag
+│   │                               # CsvFormat, DeviceTag, Heartbeat
 │   └── ui/MainActivity.kt          # Sign-in, permissions, sync, recent events, setup-health banner
 └── res/...
 
 app/src/test/kotlin/com/nestegg/btlogger/
 ├── setup/SetupStatusTest.kt
 ├── storage/EventStoreTest.kt
-└── sync/DeviceTagTest.kt
+├── sync/DeviceTagTest.kt
+└── sync/HeartbeatTest.kt
 ```
 
 ## Status
