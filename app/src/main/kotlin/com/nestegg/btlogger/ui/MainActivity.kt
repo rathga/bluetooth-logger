@@ -188,7 +188,8 @@ private fun StatusScreen(
     val account = remember(refreshTick) { syncState.accountName }
     val lastSync = remember(refreshTick) { syncState.lastSyncMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
-    val recent = remember(refreshTick) { store.recent(RECENT_LIMIT) }
+    val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
+    val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,6 +206,7 @@ private fun StatusScreen(
         Text("Signed in: ${account ?: "—"}")
         Text("Events captured: $eventCount")
         Text("Last sync: ${formatLastSync(lastSync)}")
+        Text("Last alive check: ${formatHeartbeat(lastHeartbeat)}")
 
         Spacer(Modifier.height(8.dp))
 
@@ -290,6 +292,15 @@ private const val RECENT_LIMIT = 10
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
+private val timestampFormatter: DateFormat =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+
 private fun formatLastSync(millis: Long): String =
     if (millis == 0L) "never"
-    else DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(millis))
+    else timestampFormatter.format(Date(millis))
+
+private fun formatHeartbeat(event: BtEvent?): String {
+    if (event == null) return "never"
+    val time = timestampFormatter.format(Date(event.utcTimestamp))
+    return "$time — ${event.deviceName ?: "OK"}"
+}
