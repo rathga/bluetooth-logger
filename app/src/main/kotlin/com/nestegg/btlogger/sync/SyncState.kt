@@ -6,7 +6,8 @@ import androidx.core.content.edit
 
 /**
  * Persisted sync bookkeeping: which Google account to use, last-synced byte
- * offset per monthly file, and last successful sync wall-clock time.
+ * offset per monthly file, and the timestamps/outcome that drive the in-app
+ * sync-health line and banner.
  */
 class SyncState(private val prefs: SharedPreferences) {
 
@@ -14,9 +15,23 @@ class SyncState(private val prefs: SharedPreferences) {
         get() = prefs.getString(KEY_ACCOUNT, null)
         set(value) = prefs.edit { putString(KEY_ACCOUNT, value) }
 
-    var lastSyncMillis: Long
-        get() = prefs.getLong(KEY_LAST_SYNC, 0L)
-        set(value) = prefs.edit { putLong(KEY_LAST_SYNC, value) }
+    val lastAttemptMillis: Long
+        get() = prefs.getLong(KEY_LAST_ATTEMPT, 0L)
+
+    val lastAttemptOutcome: String?
+        get() = prefs.getString(KEY_LAST_OUTCOME, null)
+
+    val lastSuccessMillis: Long
+        get() = prefs.getLong(KEY_LAST_SUCCESS, 0L)
+
+    /** Records the terminal state of a sync run for the UI to surface. */
+    fun recordAttempt(attempt: SyncAttempt) {
+        prefs.edit {
+            putLong(KEY_LAST_ATTEMPT, attempt.utcTimestamp)
+            putString(KEY_LAST_OUTCOME, attempt.outcome.wireName)
+            if (attempt.outcome.isClean) putLong(KEY_LAST_SUCCESS, attempt.utcTimestamp)
+        }
+    }
 
     fun offsetFor(yearMonth: String): Long =
         prefs.getLong(offsetKey(yearMonth), 0L)
@@ -30,7 +45,9 @@ class SyncState(private val prefs: SharedPreferences) {
     companion object {
         private const val PREFS_NAME = "bt_logger_sync"
         private const val KEY_ACCOUNT = "account_name"
-        private const val KEY_LAST_SYNC = "last_sync_millis"
+        private const val KEY_LAST_ATTEMPT = "last_attempt_millis"
+        private const val KEY_LAST_OUTCOME = "last_attempt_outcome"
+        private const val KEY_LAST_SUCCESS = "last_success_millis"
 
         fun from(context: Context): SyncState =
             SyncState(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))

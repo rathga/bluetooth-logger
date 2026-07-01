@@ -51,7 +51,32 @@ class DriveClient(private val drive: Drive) {
             }
         }
 
-        val media = ByteArrayContent("text/csv", newContent.toByteArray(Charsets.UTF_8))
+        putContent(fileName, folderId, existing, newContent)
+        return rows.size
+    }
+
+    /**
+     * Replace sync-diagnostics-[deviceTag].csv wholesale with [header] plus [rows]
+     * (already-encoded CSV lines). Unlike [appendCsvRows] this overwrites rather than
+     * appends, because the journal it mirrors is a rotated, bounded snapshot — each
+     * upload is the current window, not an ever-growing tail.
+     */
+    fun overwriteCsv(fileName: String, header: String, rows: List<String>): Int {
+        val folderId = ensureFolder(FOLDER_NAME)
+        val existing = findFile(fileName, folderId)
+        val content = buildString {
+            appendLine(header)
+            for (row in rows) {
+                append(row)
+                append('\n')
+            }
+        }
+        putContent(fileName, folderId, existing, content)
+        return rows.size
+    }
+
+    private fun putContent(fileName: String, folderId: String, existing: DriveFile?, content: String) {
+        val media = ByteArrayContent("text/csv", content.toByteArray(Charsets.UTF_8))
         if (existing == null) {
             val metadata = DriveFile()
                 .setName(fileName)
@@ -61,7 +86,6 @@ class DriveClient(private val drive: Drive) {
         } else {
             drive.files().update(existing.id, DriveFile(), media).execute()
         }
-        return rows.size
     }
 
     private fun ensureFolder(name: String): String {

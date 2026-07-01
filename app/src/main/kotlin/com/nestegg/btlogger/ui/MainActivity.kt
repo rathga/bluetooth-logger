@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -50,6 +51,8 @@ import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
 import com.nestegg.btlogger.sync.DriveSyncWorker
 import com.nestegg.btlogger.sync.SyncState
+import com.nestegg.btlogger.sync.SyncTrigger
+import com.nestegg.btlogger.sync.isSyncStale
 import java.text.DateFormat
 import java.util.Date
 
@@ -135,7 +138,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun triggerSyncNow() {
-        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>().build()
+        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
+            .setInputData(workDataOf(DriveSyncWorker.KEY_TRIGGER to SyncTrigger.MANUAL.wireName))
+            .build()
         WorkManager.getInstance(this).enqueue(request)
         Log.i(TAG, "Manual sync enqueued")
     }
@@ -186,11 +191,16 @@ private fun StatusScreen(
     val store = remember { EventStore(context) }
 
     val account = remember(refreshTick) { syncState.accountName }
-    val lastSync = remember(refreshTick) { syncState.lastSyncMillis }
+    val lastAttempt = remember(refreshTick) { syncState.lastAttemptMillis }
+    val lastAttemptOutcome = remember(refreshTick) { syncState.lastAttemptOutcome }
+    val lastSuccess = remember(refreshTick) { syncState.lastSuccessMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
+
+    val syncStale = account != null && lastAttempt != 0L &&
+        isSyncStale(System.currentTimeMillis(), lastSuccess)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(
@@ -198,6 +208,7 @@ private fun StatusScreen(
             onFixBattery = onFixBattery,
             onFixPermission = onGrantPermissions,
         )
+        SyncHealthBanner(stale = syncStale, onSyncNow = onSyncNow)
         Text("Bluetooth Logger", style = MaterialTheme.typography.headlineMedium)
         Text("Logs ACL connect/disconnect events to a CSV in Google Drive.")
 
@@ -205,7 +216,7 @@ private fun StatusScreen(
 
         Text("Signed in: ${account ?: "—"}")
         Text("Events captured: $eventCount")
-        Text("Last sync: ${formatLastSync(lastSync)}")
+        Text("Last sync attempt: ${formatLastAttempt(lastAttempt, lastAttemptOutcome)}")
         Text("Last alive check: ${formatHeartbeat(lastHeartbeat)}")
 
         Spacer(Modifier.height(8.dp))
@@ -280,6 +291,28 @@ private fun SetupWarningBanner(
 }
 
 @Composable
+private fun SyncHealthBanner(stale: Boolean, onSyncNow: () -> Unit) {
+    if (!stale) return
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Sync may be stalled", style = MaterialTheme.typography.titleMedium)
+            Text("No successful sync to Google Drive in over 6 hours — captured events may not be backed up.")
+            Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
+                Text("Sync now")
+            }
+        }
+    }
+}
+
+@Composable
 private fun RecentEventRow(event: BtEvent) {
     val time = recentEventTimeFormatter.format(Date(event.utcTimestamp))
     val verb = if (event.eventType == EventType.CONNECTED) "connected" else "disconnected"
@@ -295,9 +328,11 @@ private val recentEventTimeFormatter: DateFormat =
 private val statusTimestampFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
-private fun formatLastSync(millis: Long): String =
-    if (millis == 0L) "never"
-    else statusTimestampFormatter.format(Date(millis))
+private fun formatLastAttempt(millis: Long, outcome: String?): String {
+    if (millis == 0L) return "never"
+    val time = statusTimestampFormatter.format(Date(millis))
+    return if (outcome == null) time else "$time — $outcome"
+}
 
 private fun formatHeartbeat(event: BtEvent?): String {
     if (event == null) return "never"

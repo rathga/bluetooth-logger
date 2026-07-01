@@ -9,6 +9,9 @@ internal object CsvFormat {
 
     const val HEADER = "utc_iso,event_type,device_name,device_mac"
 
+    const val DIAGNOSTICS_HEADER =
+        "utc_iso,trigger,outcome,rows_uploaded,error_class,battery_exempt,network_validated"
+
     private val isoFormatter: DateTimeFormatter =
         DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC)
 
@@ -20,6 +23,24 @@ internal object CsvFormat {
         append(csvField(event.deviceName ?: ""))
         append(',')
         append(csvField(event.deviceMac))
+    }
+
+    fun diagnosticsFileName(deviceTag: String): String = "sync-diagnostics-$deviceTag.csv"
+
+    fun diagnosticsRow(attempt: SyncAttempt): String = buildString {
+        append(isoFormatter.format(Instant.ofEpochMilli(attempt.utcTimestamp)))
+        append(',')
+        append(attempt.trigger.wireName)
+        append(',')
+        append(attempt.outcome.wireName)
+        append(',')
+        append(attempt.rowsUploaded)
+        append(',')
+        append(csvField(attempt.errorClass ?: ""))
+        append(',')
+        append(attempt.batteryExempt)
+        append(',')
+        append(attempt.networkValidated)
     }
 
     private fun csvField(value: String): String {
