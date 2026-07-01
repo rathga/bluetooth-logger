@@ -10,25 +10,9 @@ import com.google.api.services.drive.DriveScopes
 import java.io.ByteArrayOutputStream
 import com.google.api.services.drive.model.File as DriveFile
 
-/**
- * Thin wrapper over the Google Drive REST API for our append-CSV use case.
- * Uses the drive.file scope — we can only see/touch files this app created.
- *
- * Drive's REST API has no true append, so [appendCsvRows] does
- * download → concat → re-upload via files.update. For monthly CSVs of a few
- * thousand events the size stays small (<200 KB).
- */
+// drive.file scope sees only files we created; Drive has no append, so we re-upload whole.
 class DriveClient(private val drive: Drive) {
 
-    /**
-     * Append [rows] (already-encoded CSV lines, no trailing newline) to
-     * bluetooth-log-[deviceTag]-[yearMonth].csv inside the [FOLDER_NAME] folder,
-     * creating the folder and/or file if missing. The first creation writes
-     * [header] as the first line. Returns the number of rows appended.
-     *
-     * The deviceTag in the filename means two phones syncing to the same
-     * Google account land in two distinct files instead of racing on one.
-     */
     fun appendCsvRows(yearMonth: String, deviceTag: String, header: String, rows: List<String>): Int {
         if (rows.isEmpty()) return 0
         val folderId = ensureFolder(FOLDER_NAME)
@@ -45,13 +29,34 @@ class DriveClient(private val drive: Drive) {
                     append('\n')
                 }
             }
-            for (row in rows) {
-                append(row)
-                append('\n')
-            }
+            appendRows(rows)
         }
 
-        val media = ByteArrayContent("text/csv", newContent.toByteArray(Charsets.UTF_8))
+        putContent(fileName, folderId, existing, newContent)
+        return rows.size
+    }
+
+    /** Replaces [fileName] wholesale with [header] plus [rows], rather than appending. */
+    fun overwriteCsv(fileName: String, header: String, rows: List<String>): Int {
+        val folderId = ensureFolder(FOLDER_NAME)
+        val existing = findFile(fileName, folderId)
+        val content = buildString {
+            appendLine(header)
+            appendRows(rows)
+        }
+        putContent(fileName, folderId, existing, content)
+        return rows.size
+    }
+
+    private fun StringBuilder.appendRows(rows: List<String>) {
+        for (row in rows) {
+            append(row)
+            append('\n')
+        }
+    }
+
+    private fun putContent(fileName: String, folderId: String, existing: DriveFile?, content: String) {
+        val media = ByteArrayContent("text/csv", content.toByteArray(Charsets.UTF_8))
         if (existing == null) {
             val metadata = DriveFile()
                 .setName(fileName)
@@ -61,7 +66,6 @@ class DriveClient(private val drive: Drive) {
         } else {
             drive.files().update(existing.id, DriveFile(), media).execute()
         }
-        return rows.size
     }
 
     private fun ensureFolder(name: String): String {

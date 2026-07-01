@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -49,7 +51,11 @@ import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
 import com.nestegg.btlogger.sync.DriveSyncWorker
+import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD_MILLIS
+import com.nestegg.btlogger.sync.SyncOutcome
 import com.nestegg.btlogger.sync.SyncState
+import com.nestegg.btlogger.sync.SyncTrigger
+import com.nestegg.btlogger.sync.isSyncStale
 import java.text.DateFormat
 import java.util.Date
 
@@ -135,7 +141,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun triggerSyncNow() {
-        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>().build()
+        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
+            .setInputData(workDataOf(DriveSyncWorker.KEY_TRIGGER to SyncTrigger.MANUAL.wireName))
+            .build()
         WorkManager.getInstance(this).enqueue(request)
         Log.i(TAG, "Manual sync enqueued")
     }
@@ -186,11 +194,16 @@ private fun StatusScreen(
     val store = remember { EventStore(context) }
 
     val account = remember(refreshTick) { syncState.accountName }
-    val lastSync = remember(refreshTick) { syncState.lastSyncMillis }
+    val lastAttempt = remember(refreshTick) { syncState.lastAttemptMillis }
+    val lastAttemptOutcome = remember(refreshTick) { syncState.lastAttemptOutcome }
+    val lastSuccess = remember(refreshTick) { syncState.lastSuccessMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
+
+    val syncStale = account != null && lastAttempt != 0L &&
+        isSyncStale(System.currentTimeMillis(), lastSuccess)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(
@@ -198,6 +211,7 @@ private fun StatusScreen(
             onFixBattery = onFixBattery,
             onFixPermission = onGrantPermissions,
         )
+        SyncHealthBanner(stale = syncStale, onSyncNow = onSyncNow)
         Text("Bluetooth Logger", style = MaterialTheme.typography.headlineMedium)
         Text("Logs ACL connect/disconnect events to a CSV in Google Drive.")
 
@@ -205,7 +219,7 @@ private fun StatusScreen(
 
         Text("Signed in: ${account ?: "—"}")
         Text("Events captured: $eventCount")
-        Text("Last sync: ${formatLastSync(lastSync)}")
+        Text("Last sync attempt: ${formatLastAttempt(lastAttempt, lastAttemptOutcome)}")
         Text("Last alive check: ${formatHeartbeat(lastHeartbeat)}")
 
         Spacer(Modifier.height(8.dp))
@@ -242,12 +256,7 @@ private fun StatusScreen(
 }
 
 @Composable
-private fun SetupWarningBanner(
-    issues: List<SetupIssue>,
-    onFixBattery: () -> Unit,
-    onFixPermission: () -> Unit,
-) {
-    if (issues.isEmpty()) return
+private fun WarningBanner(title: String, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -258,23 +267,49 @@ private fun SetupWarningBanner(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Setup needs attention", style = MaterialTheme.typography.titleMedium)
-            issues.forEach { issue ->
-                when (issue) {
-                    SetupIssue.NOT_BATTERY_EXEMPT -> {
-                        Text("Battery optimisation is on — Android may stop the app capturing connections.")
-                        Button(onClick = onFixBattery, modifier = Modifier.fillMaxWidth()) {
-                            Text("Allow background activity")
-                        }
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SetupWarningBanner(
+    issues: List<SetupIssue>,
+    onFixBattery: () -> Unit,
+    onFixPermission: () -> Unit,
+) {
+    if (issues.isEmpty()) return
+    WarningBanner("Setup needs attention") {
+        issues.forEach { issue ->
+            when (issue) {
+                SetupIssue.NOT_BATTERY_EXEMPT -> {
+                    Text("Battery optimisation is on — Android may stop the app capturing connections.")
+                    Button(onClick = onFixBattery, modifier = Modifier.fillMaxWidth()) {
+                        Text("Allow background activity")
                     }
-                    SetupIssue.MISSING_BLUETOOTH_CONNECT -> {
-                        Text("Bluetooth permission is missing — connections won't be recorded.")
-                        Button(onClick = onFixPermission, modifier = Modifier.fillMaxWidth()) {
-                            Text("Grant Bluetooth permission")
-                        }
+                }
+                SetupIssue.MISSING_BLUETOOTH_CONNECT -> {
+                    Text("Bluetooth permission is missing — connections won't be recorded.")
+                    Button(onClick = onFixPermission, modifier = Modifier.fillMaxWidth()) {
+                        Text("Grant Bluetooth permission")
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncHealthBanner(stale: Boolean, onSyncNow: () -> Unit) {
+    if (!stale) return
+    WarningBanner("Sync may be stalled") {
+        Text(
+            "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours — " +
+                "captured events may not be backed up.",
+        )
+        Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
+            Text("Sync now")
         }
     }
 }
@@ -289,15 +324,19 @@ private fun RecentEventRow(event: BtEvent) {
 
 private const val RECENT_LIMIT = 10
 
+private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD_MILLIS / (60L * 60 * 1000)
+
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
 private val statusTimestampFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
-private fun formatLastSync(millis: Long): String =
-    if (millis == 0L) "never"
-    else statusTimestampFormatter.format(Date(millis))
+private fun formatLastAttempt(millis: Long, outcome: SyncOutcome?): String {
+    if (millis == 0L) return "never"
+    val time = statusTimestampFormatter.format(Date(millis))
+    return if (outcome == null) time else "$time — ${outcome.displayLabel}"
+}
 
 private fun formatHeartbeat(event: BtEvent?): String {
     if (event == null) return "never"
