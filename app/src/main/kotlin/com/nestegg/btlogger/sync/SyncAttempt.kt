@@ -17,13 +17,13 @@ enum class SyncTrigger(val wireName: String) {
     }
 }
 
-enum class SyncOutcome(val wireName: String, val isClean: Boolean) {
-    SUCCESS("success", true),
-    NO_EVENTS("no-events", true),
-    NO_ACCOUNT("no-account", false),
-    AUTH_FAILURE("auth-failure", false),
-    IO_RETRY("io-retry", false),
-    ERROR("error", false);
+enum class SyncOutcome(val wireName: String, val isClean: Boolean, val displayLabel: String) {
+    SUCCESS("success", true, "Synced"),
+    NO_EVENTS("no-events", true, "Up to date"),
+    NO_ACCOUNT("no-account", false, "Not signed in"),
+    AUTH_FAILURE("auth-failure", false, "Sign-in needed"),
+    IO_RETRY("io-retry", false, "Network issue, will retry"),
+    ERROR("error", false, "Error");
 
     companion object {
         fun fromWireName(raw: String?): SyncOutcome? = entries.firstOrNull { it.wireName == raw }

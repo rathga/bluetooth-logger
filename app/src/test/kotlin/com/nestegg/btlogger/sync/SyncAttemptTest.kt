@@ -1,7 +1,9 @@
 package com.nestegg.btlogger.sync
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SyncAttemptTest {
@@ -86,6 +88,13 @@ class SyncAttemptTest {
         assertEquals(SyncTrigger.PERIODIC, SyncTrigger.fromWireName("nonsense"))
         assertEquals(SyncTrigger.PERIODIC, SyncTrigger.fromWireName(null))
         assertEquals(SyncTrigger.MANUAL, SyncTrigger.fromWireName("manual"))
+    }
+
+    @Test fun `every outcome has a human display label distinct from its wire token`() {
+        for (outcome in SyncOutcome.entries) {
+            assertTrue(outcome.displayLabel.isNotBlank())
+            assertNotEquals(outcome.wireName, outcome.displayLabel)
+        }
     }
 
     @Test fun `only success and no-events count as clean`() {

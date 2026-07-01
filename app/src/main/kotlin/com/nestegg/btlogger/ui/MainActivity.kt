@@ -314,8 +314,6 @@ private fun SyncHealthBanner(stale: Boolean, onSyncNow: () -> Unit) {
     }
 }
 
-private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD_MILLIS / (60L * 60 * 1000)
-
 @Composable
 private fun RecentEventRow(event: BtEvent) {
     val time = recentEventTimeFormatter.format(Date(event.utcTimestamp))
@@ -326,6 +324,8 @@ private fun RecentEventRow(event: BtEvent) {
 
 private const val RECENT_LIMIT = 10
 
+private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD_MILLIS / (60L * 60 * 1000)
+
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
@@ -335,7 +335,7 @@ private val statusTimestampFormatter: DateFormat =
 private fun formatLastAttempt(millis: Long, outcome: SyncOutcome?): String {
     if (millis == 0L) return "never"
     val time = statusTimestampFormatter.format(Date(millis))
-    return if (outcome == null) time else "$time — ${outcome.wireName}"
+    return if (outcome == null) time else "$time — ${outcome.displayLabel}"
 }
 
 private fun formatHeartbeat(event: BtEvent?): String {

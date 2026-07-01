@@ -10,8 +10,7 @@ import com.google.api.services.drive.DriveScopes
 import java.io.ByteArrayOutputStream
 import com.google.api.services.drive.model.File as DriveFile
 
-// drive.file scope: this client only sees files it created. Drive has no true
-// append, so appendCsvRows does download → concat → re-upload via files.update.
+// drive.file scope sees only files we created; Drive has no append, so we re-upload whole.
 class DriveClient(private val drive: Drive) {
 
     fun appendCsvRows(yearMonth: String, deviceTag: String, header: String, rows: List<String>): Int {

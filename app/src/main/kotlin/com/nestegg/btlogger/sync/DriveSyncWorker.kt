@@ -28,7 +28,6 @@ class DriveSyncWorker(
         return try {
             runSync(trigger)
         } catch (e: Exception) {
-            // Guarantees even an unexpected early throw leaves a journal record.
             Log.e(TAG, "Sync aborted before completion", e)
             record(attempt(trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
         }
@@ -46,6 +45,12 @@ class DriveSyncWorker(
         fun attemptFor(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) =
             attempt(trigger, outcome, rowsUploaded, errorClass, setup.batteryExempt, networkValidated)
 
+        fun recordAuthNeeded(e: Exception): Result {
+            Log.w(TAG, "Drive auth needs user action — open the app and sign in again", e)
+            SetupNotifier.notifyAuthNeeded(applicationContext)
+            return record(attemptFor(SyncOutcome.AUTH_FAILURE, 0, e.javaClass.simpleName), Result.failure())
+        }
+
         val accountName = syncState.accountName
             ?: return record(attemptFor(SyncOutcome.NO_ACCOUNT, 0, null), Result.success())
 
@@ -60,13 +65,9 @@ class DriveSyncWorker(
             record(attemptFor(outcome, totalAppended, null), Result.success())
         } catch (e: UserRecoverableAuthIOException) {
             // Offset untouched, so the next sync after re-auth resumes where we stopped.
-            Log.w(TAG, "Drive auth needs user action — open the app and sign in again", e)
-            SetupNotifier.notifyAuthNeeded(applicationContext)
-            record(attemptFor(SyncOutcome.AUTH_FAILURE, 0, e.javaClass.simpleName), Result.failure())
+            recordAuthNeeded(e)
         } catch (e: UserRecoverableAuthException) {
-            Log.w(TAG, "Drive auth needs user action — open the app and sign in again", e)
-            SetupNotifier.notifyAuthNeeded(applicationContext)
-            record(attemptFor(SyncOutcome.AUTH_FAILURE, 0, e.javaClass.simpleName), Result.failure())
+            recordAuthNeeded(e)
         } catch (e: IOException) {
             Log.w(TAG, "Transient sync failure; will retry", e)
             record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), Result.retry())
