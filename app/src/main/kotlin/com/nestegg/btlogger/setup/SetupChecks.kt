@@ -27,7 +27,7 @@ fun isBluetoothAdapterEnabled(context: Context): Boolean {
     return manager?.adapter?.isEnabled == true
 }
 
-/** True when the active network has passed Android's captive-portal validation. */
+// VALIDATED means Android confirmed real internet (captive-portal probe passed), not merely "connected".
 fun isActiveNetworkValidated(context: Context): Boolean {
     val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         ?: return false

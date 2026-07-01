@@ -1,11 +1,5 @@
 package com.nestegg.btlogger.storage
 
-/**
- * Hand-rolled JSON scalar helpers shared by the app's single-line JSON records
- * ([BtEvent], [com.nestegg.btlogger.sync.SyncAttempt]). The schemas are tiny and
- * flat, so we avoid pulling in a serialization library.
- */
-
 internal fun StringBuilder.appendJsonString(value: String) {
     append('"')
     for (c in value) when {

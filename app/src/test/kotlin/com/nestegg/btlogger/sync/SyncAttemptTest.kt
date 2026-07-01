@@ -6,9 +6,22 @@ import org.junit.Test
 
 class SyncAttemptTest {
 
+    private fun attempt(
+        utcTimestamp: Long = 1_700_000_000_000,
+        trigger: SyncTrigger = SyncTrigger.PERIODIC,
+        outcome: SyncOutcome = SyncOutcome.SUCCESS,
+        rowsUploaded: Int = 0,
+        errorClass: String? = null,
+        batteryExempt: Boolean = false,
+        networkValidated: Boolean = false,
+    ) = SyncAttempt(utcTimestamp, trigger, outcome, rowsUploaded, errorClass, batteryExempt, networkValidated)
+
+    private fun attemptJsonWithOutcome(outcome: String): String =
+        attempt(outcome = SyncOutcome.SUCCESS).toJsonLine()
+            .replace("\"outcome\":\"success\"", "\"outcome\":\"$outcome\"")
+
     @Test fun `round-trips every field through JSON`() {
-        val attempt = SyncAttempt(
-            utcTimestamp = 1_700_000_000_000,
+        val attempt = attempt(
             trigger = SyncTrigger.MANUAL,
             outcome = SyncOutcome.SUCCESS,
             rowsUploaded = 42,
@@ -20,13 +33,10 @@ class SyncAttemptTest {
     }
 
     @Test fun `round-trips a null error class`() {
-        val attempt = SyncAttempt(
-            utcTimestamp = 1_700_000_000_000,
+        val attempt = attempt(
             trigger = SyncTrigger.PERIODIC,
             outcome = SyncOutcome.NO_EVENTS,
-            rowsUploaded = 0,
             errorClass = null,
-            batteryExempt = false,
             networkValidated = true,
         )
         val parsed = parseSyncAttemptOrNull(attempt.toJsonLine())
@@ -36,13 +46,19 @@ class SyncAttemptTest {
 
     @Test fun `round-trips every outcome`() {
         for (outcome in SyncOutcome.entries) {
-            val attempt = SyncAttempt(1L, SyncTrigger.PERIODIC, outcome, 0, null, false, false)
+            val attempt = attempt(outcome = outcome)
             assertEquals(outcome, parseSyncAttemptOrNull(attempt.toJsonLine())?.outcome)
         }
     }
 
     @Test fun `an error class with quotes survives`() {
-        val attempt = SyncAttempt(1L, SyncTrigger.MANUAL, SyncOutcome.ERROR, 0, "a \"weird\" name", true, true)
+        val attempt = attempt(
+            trigger = SyncTrigger.MANUAL,
+            outcome = SyncOutcome.ERROR,
+            errorClass = "a \"weird\" name",
+            batteryExempt = true,
+            networkValidated = true,
+        )
         assertEquals(attempt, parseSyncAttemptOrNull(attempt.toJsonLine()))
     }
 
@@ -51,13 +67,19 @@ class SyncAttemptTest {
         assertNull(parseSyncAttemptOrNull("{\"ts\":1}"))
     }
 
-    @Test fun `unknown outcome fails the parse`() {
-        assertNull(
-            parseSyncAttemptOrNull(
-                "{\"ts\":1,\"trigger\":\"manual\",\"outcome\":\"bogus\"," +
-                    "\"rows\":0,\"error\":null,\"battery_exempt\":true,\"network_validated\":true}",
-            ),
-        )
+    @Test fun `a line whose outcome is unknown fails the parse`() {
+        assertNull(parseSyncAttemptOrNull(attemptJsonWithOutcome("bogus")))
+    }
+
+    @Test fun `every wire name maps back to its outcome`() {
+        for (outcome in SyncOutcome.entries) {
+            assertEquals(outcome, SyncOutcome.fromWireName(outcome.wireName))
+        }
+    }
+
+    @Test fun `an unknown outcome wire name maps to null`() {
+        assertNull(SyncOutcome.fromWireName("bogus"))
+        assertNull(SyncOutcome.fromWireName(null))
     }
 
     @Test fun `unknown trigger falls back to periodic`() {

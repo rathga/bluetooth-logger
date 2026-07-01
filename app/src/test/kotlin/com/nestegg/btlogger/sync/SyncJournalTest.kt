@@ -21,13 +21,13 @@ class SyncJournalTest {
         j.append(attempt(1L, SyncOutcome.NO_ACCOUNT))
         j.append(attempt(2L, SyncOutcome.SUCCESS))
 
-        val attempts = j.recentAttempts()
+        val attempts = j.retainedAttempts()
         assertEquals(listOf(1L, 2L), attempts.map { it.utcTimestamp })
         assertEquals(SyncOutcome.NO_ACCOUNT, attempts.first().outcome)
     }
 
     @Test fun `an empty journal reads as no attempts`() {
-        assertTrue(journal().recentAttempts().isEmpty())
+        assertTrue(journal().retainedAttempts().isEmpty())
     }
 
     @Test fun `rotation caps the journal at the newest entries`() {
@@ -35,7 +35,7 @@ class SyncJournalTest {
         val total = SYNC_JOURNAL_CAP + 25
         for (ts in 1..total) j.append(attempt(ts.toLong()))
 
-        val attempts = j.recentAttempts()
+        val attempts = j.retainedAttempts()
         assertEquals(SYNC_JOURNAL_CAP, attempts.size)
         assertEquals(26L, attempts.first().utcTimestamp)
         assertEquals(total.toLong(), attempts.last().utcTimestamp)

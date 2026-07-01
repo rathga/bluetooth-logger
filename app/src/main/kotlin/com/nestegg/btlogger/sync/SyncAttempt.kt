@@ -7,7 +7,6 @@ import com.nestegg.btlogger.storage.extractLong
 import com.nestegg.btlogger.storage.extractString
 import com.nestegg.btlogger.storage.extractStringOrNull
 
-/** What kicked off a sync run — the hourly worker or a user tapping "Sync now". */
 enum class SyncTrigger(val wireName: String) {
     PERIODIC("periodic"),
     MANUAL("manual");
@@ -18,11 +17,6 @@ enum class SyncTrigger(val wireName: String) {
     }
 }
 
-/**
- * How a sync run ended. [isClean] marks the terminal states that prove the upload
- * pipeline is healthy — either rows reached Drive or there was genuinely nothing
- * pending — and so refresh the "last successful sync" timestamp.
- */
 enum class SyncOutcome(val wireName: String, val isClean: Boolean) {
     SUCCESS("success", true),
     NO_EVENTS("no-events", true),

@@ -44,7 +44,7 @@ Idempotency via per-month last-synced-byte-offset in `SharedPreferences`. Per-de
 - `sync/SyncAttempt.kt` — pure domain: per-run record (`SyncTrigger`, `SyncOutcome` with `isClean`, timestamp/rows/error/context) + hand-rolled JSON encode/decode. Unit-tested.
 - `sync/SyncJournalPolicy.kt` — pure domain: `SYNC_JOURNAL_CAP` + `retainWithinCap` (newest-N retention). Unit-tested.
 - `sync/SyncHealth.kt` — pure domain: `SYNC_STALE_THRESHOLD_MILLIS` (6h) + `isSyncStale`. Unit-tested.
-- `sync/SyncJournal.kt` — bounded append-only JSONL journal of sync attempts (`File` baseDir for JVM tests); rotates via `retainWithinCap`, reads back with `recentAttempts`.
+- `sync/SyncJournal.kt` — bounded append-only JSONL journal of sync attempts (`File` baseDir for JVM tests); rotates via `retainWithinCap`, reads back with `retainedAttempts`.
 - `sync/DriveClient.kt` — `appendCsvRows(yearMonth, deviceTag, header, rows)` (append) and `overwriteCsv(fileName, header, rows)` (wholesale replace, for the diagnostics snapshot); Drive `files.update` re-upload.
 - `sync/DriveSyncWorker.kt` — iterates months, uploads new chunks, persists offset; reads the trigger from `inputData`; records a `SyncAttempt` on **every** return path, mirrors the journal to `sync-diagnostics-<deviceTag>.csv` in Drive, and raises the auth notification on `UserRecoverableAuth*`. Emits a liveness heartbeat before its early-outs.
 - `sync/SyncState.kt` — `SharedPreferences` wrapper (account name, per-month offsets, last-attempt millis+outcome, last-success millis via `recordAttempt`).

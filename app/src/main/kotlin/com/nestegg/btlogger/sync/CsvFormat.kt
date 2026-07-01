@@ -16,7 +16,7 @@ internal object CsvFormat {
         DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC)
 
     fun row(event: BtEvent): String = buildString {
-        append(isoFormatter.format(Instant.ofEpochMilli(event.utcTimestamp)))
+        appendIsoInstant(event.utcTimestamp)
         append(',')
         append(event.eventType.name)
         append(',')
@@ -28,7 +28,7 @@ internal object CsvFormat {
     fun diagnosticsFileName(deviceTag: String): String = "sync-diagnostics-$deviceTag.csv"
 
     fun diagnosticsRow(attempt: SyncAttempt): String = buildString {
-        append(isoFormatter.format(Instant.ofEpochMilli(attempt.utcTimestamp)))
+        appendIsoInstant(attempt.utcTimestamp)
         append(',')
         append(attempt.trigger.wireName)
         append(',')
@@ -41,6 +41,10 @@ internal object CsvFormat {
         append(attempt.batteryExempt)
         append(',')
         append(attempt.networkValidated)
+    }
+
+    private fun StringBuilder.appendIsoInstant(millis: Long) {
+        append(isoFormatter.format(Instant.ofEpochMilli(millis)))
     }
 
     private fun csvField(value: String): String {

@@ -10,25 +10,10 @@ import com.google.api.services.drive.DriveScopes
 import java.io.ByteArrayOutputStream
 import com.google.api.services.drive.model.File as DriveFile
 
-/**
- * Thin wrapper over the Google Drive REST API for our append-CSV use case.
- * Uses the drive.file scope — we can only see/touch files this app created.
- *
- * Drive's REST API has no true append, so [appendCsvRows] does
- * download → concat → re-upload via files.update. For monthly CSVs of a few
- * thousand events the size stays small (<200 KB).
- */
+// drive.file scope: this client only sees files it created. Drive has no true
+// append, so appendCsvRows does download → concat → re-upload via files.update.
 class DriveClient(private val drive: Drive) {
 
-    /**
-     * Append [rows] (already-encoded CSV lines, no trailing newline) to
-     * bluetooth-log-[deviceTag]-[yearMonth].csv inside the [FOLDER_NAME] folder,
-     * creating the folder and/or file if missing. The first creation writes
-     * [header] as the first line. Returns the number of rows appended.
-     *
-     * The deviceTag in the filename means two phones syncing to the same
-     * Google account land in two distinct files instead of racing on one.
-     */
     fun appendCsvRows(yearMonth: String, deviceTag: String, header: String, rows: List<String>): Int {
         if (rows.isEmpty()) return 0
         val folderId = ensureFolder(FOLDER_NAME)
@@ -45,34 +30,30 @@ class DriveClient(private val drive: Drive) {
                     append('\n')
                 }
             }
-            for (row in rows) {
-                append(row)
-                append('\n')
-            }
+            appendRows(rows)
         }
 
         putContent(fileName, folderId, existing, newContent)
         return rows.size
     }
 
-    /**
-     * Replace sync-diagnostics-[deviceTag].csv wholesale with [header] plus [rows]
-     * (already-encoded CSV lines). Unlike [appendCsvRows] this overwrites rather than
-     * appends, because the journal it mirrors is a rotated, bounded snapshot — each
-     * upload is the current window, not an ever-growing tail.
-     */
+    /** Replaces [fileName] wholesale with [header] plus [rows], rather than appending. */
     fun overwriteCsv(fileName: String, header: String, rows: List<String>): Int {
         val folderId = ensureFolder(FOLDER_NAME)
         val existing = findFile(fileName, folderId)
         val content = buildString {
             appendLine(header)
-            for (row in rows) {
-                append(row)
-                append('\n')
-            }
+            appendRows(rows)
         }
         putContent(fileName, folderId, existing, content)
         return rows.size
+    }
+
+    private fun StringBuilder.appendRows(rows: List<String>) {
+        for (row in rows) {
+            append(row)
+            append('\n')
+        }
     }
 
     private fun putContent(fileName: String, folderId: String, existing: DriveFile?, content: String) {

@@ -4,11 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 
-/**
- * Persisted sync bookkeeping: which Google account to use, last-synced byte
- * offset per monthly file, and the timestamps/outcome that drive the in-app
- * sync-health line and banner.
- */
 class SyncState(private val prefs: SharedPreferences) {
 
     var accountName: String?
@@ -18,13 +13,12 @@ class SyncState(private val prefs: SharedPreferences) {
     val lastAttemptMillis: Long
         get() = prefs.getLong(KEY_LAST_ATTEMPT, 0L)
 
-    val lastAttemptOutcome: String?
-        get() = prefs.getString(KEY_LAST_OUTCOME, null)
+    val lastAttemptOutcome: SyncOutcome?
+        get() = SyncOutcome.fromWireName(prefs.getString(KEY_LAST_OUTCOME, null))
 
     val lastSuccessMillis: Long
         get() = prefs.getLong(KEY_LAST_SUCCESS, 0L)
 
-    /** Records the terminal state of a sync run for the UI to surface. */
     fun recordAttempt(attempt: SyncAttempt) {
         prefs.edit {
             putLong(KEY_LAST_ATTEMPT, attempt.utcTimestamp)

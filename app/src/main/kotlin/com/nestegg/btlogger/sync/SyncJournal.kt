@@ -3,11 +3,7 @@ package com.nestegg.btlogger.sync
 import android.content.Context
 import java.io.File
 
-/**
- * Append-only JSONL journal of sync attempts in app-private storage, capped at
- * [SYNC_JOURNAL_CAP] records so it stays small. Survives process death and reboot,
- * and is the source for both the on-device history and the Drive diagnostics copy.
- */
+/** Append-only JSONL journal of sync attempts, capped at [SYNC_JOURNAL_CAP] records. */
 class SyncJournal internal constructor(private val baseDir: File) {
 
     constructor(context: Context) : this(context.filesDir)
@@ -22,8 +18,7 @@ class SyncJournal internal constructor(private val baseDir: File) {
         }
     }
 
-    /** All retained attempts, oldest first. */
-    fun recentAttempts(): List<SyncAttempt> {
+    fun retainedAttempts(): List<SyncAttempt> {
         val file = journalFile()
         if (!file.exists()) return emptyList()
         return file.readLines().mapNotNull(::parseSyncAttemptOrNull)
