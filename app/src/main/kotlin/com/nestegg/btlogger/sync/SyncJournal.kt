@@ -34,7 +34,7 @@ class SyncJournal internal constructor(private val baseDir: File) {
     private fun journalFile(): File = File(baseDir, FILE_NAME)
 
     companion object {
-        internal const val FILE_NAME = "sync-journal.jsonl"
+        private const val FILE_NAME = "sync-journal.jsonl"
         private val WRITE_LOCK = Any()
     }
 }

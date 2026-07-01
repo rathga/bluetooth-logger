@@ -12,14 +12,14 @@ class SyncJournalTest {
 
     private fun journal(): SyncJournal = SyncJournal(tmp.root)
 
-    private fun attempt(ts: Long, outcome: SyncOutcome = SyncOutcome.SUCCESS): SyncAttempt =
+    private fun attemptAt(ts: Long, outcome: SyncOutcome = SyncOutcome.SUCCESS): SyncAttempt =
         SyncAttempt(ts, SyncTrigger.PERIODIC, outcome, rowsUploaded = 1, errorClass = null,
             batteryExempt = true, networkValidated = true)
 
     @Test fun `reads back appended attempts oldest first`() {
         val j = journal()
-        j.append(attempt(1L, SyncOutcome.NO_ACCOUNT))
-        j.append(attempt(2L, SyncOutcome.SUCCESS))
+        j.append(attemptAt(1L, SyncOutcome.NO_ACCOUNT))
+        j.append(attemptAt(2L, SyncOutcome.SUCCESS))
 
         val attempts = j.retainedAttempts()
         assertEquals(listOf(1L, 2L), attempts.map { it.utcTimestamp })
@@ -33,7 +33,7 @@ class SyncJournalTest {
     @Test fun `rotation caps the journal at the newest entries`() {
         val j = journal()
         val total = SYNC_JOURNAL_CAP + 25
-        for (ts in 1..total) j.append(attempt(ts.toLong()))
+        for (ts in 1..total) j.append(attemptAt(ts.toLong()))
 
         val attempts = j.retainedAttempts()
         assertEquals(SYNC_JOURNAL_CAP, attempts.size)

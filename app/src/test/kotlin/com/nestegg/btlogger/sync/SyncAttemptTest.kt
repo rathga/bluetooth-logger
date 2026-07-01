@@ -90,7 +90,7 @@ class SyncAttemptTest {
         assertEquals(SyncTrigger.MANUAL, SyncTrigger.fromWireName("manual"))
     }
 
-    @Test fun `every outcome has a human display label distinct from its wire token`() {
+    @Test fun `every outcome has a human display label distinct from its wire name`() {
         for (outcome in SyncOutcome.entries) {
             assertTrue(outcome.displayLabel.isNotBlank())
             assertNotEquals(outcome.wireName, outcome.displayLabel)
