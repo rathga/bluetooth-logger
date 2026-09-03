@@ -8,13 +8,20 @@ private const val TAG = "SyncWatchdog"
 
 internal fun recoverStalledSync(context: Context) {
     val syncState = SyncState.from(context)
-    if (syncState.accountName == null) return
-
     val now = System.currentTimeMillis()
     val alert = when (
-        syncRecoveryAction(now, syncState.lastSuccessMillis, syncState.lastForcedReenqueueMillis)
+        syncRecoveryAction(
+            signedIn = syncState.accountName != null,
+            nowMillis = now,
+            lastSuccessMillis = syncState.lastSuccessMillis,
+            lastForcedReenqueueMillis = syncState.lastForcedReenqueueMillis,
+        )
     ) {
         SyncRecoveryAction.NONE -> return
+        SyncRecoveryAction.CLEAR_ALERT -> {
+            SetupNotifier.clearSyncStalled(context)
+            return
+        }
         SyncRecoveryAction.FORCE_REENQUEUE -> false
         SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT -> true
     }

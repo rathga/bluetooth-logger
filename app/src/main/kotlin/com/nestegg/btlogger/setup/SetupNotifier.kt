@@ -78,6 +78,7 @@ object SetupNotifier {
             .setContentText(text)
             .setContentIntent(openAppIntent(context))
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .build()
         if (manager.areNotificationsEnabled()) {
             manager.notify(id, notification)

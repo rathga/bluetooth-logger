@@ -13,15 +13,18 @@ fun isSyncStale(
 
 internal enum class SyncRecoveryAction {
     NONE,
+    CLEAR_ALERT,
     FORCE_REENQUEUE,
     FORCE_REENQUEUE_AND_ALERT,
 }
 
 internal fun syncRecoveryAction(
+    signedIn: Boolean,
     nowMillis: Long,
     lastSuccessMillis: Long,
     lastForcedReenqueueMillis: Long,
 ): SyncRecoveryAction = when {
+    !signedIn -> SyncRecoveryAction.CLEAR_ALERT
     !isSyncStale(nowMillis, lastSuccessMillis) -> SyncRecoveryAction.NONE
     lastForcedReenqueueMillis <= lastSuccessMillis -> SyncRecoveryAction.FORCE_REENQUEUE
     nowMillis - lastForcedReenqueueMillis < FORCED_REENQUEUE_GRACE_MILLIS -> SyncRecoveryAction.NONE

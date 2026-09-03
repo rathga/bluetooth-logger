@@ -43,6 +43,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
 import com.nestegg.btlogger.setup.SetupIssue
+import com.nestegg.btlogger.setup.SetupNotifier
 import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
@@ -131,6 +132,7 @@ class MainActivity : ComponentActivity() {
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
                 SyncState.from(this).accountName = null
+                SetupNotifier.clearSyncStalled(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
             }

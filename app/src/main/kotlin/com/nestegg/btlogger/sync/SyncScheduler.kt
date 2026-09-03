@@ -2,7 +2,6 @@ package com.nestegg.btlogger.sync
 
 import android.content.Context
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -12,11 +11,10 @@ import java.util.concurrent.TimeUnit
 internal object SyncScheduler {
 
     private const val PERIODIC_UNIQUE_NAME = "drive-sync"
-    private const val MANUAL_UNIQUE_NAME = "drive-sync-manual"
     private const val PERIOD_HOURS = 1L
 
     fun ensureScheduled(context: Context) =
-        enqueuePeriodic(context, ExistingPeriodicWorkPolicy.KEEP)
+        enqueuePeriodic(context, ExistingPeriodicWorkPolicy.UPDATE)
 
     fun forceReenqueue(context: Context) =
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
@@ -25,8 +23,7 @@ internal object SyncScheduler {
         val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
             .setInputData(triggerData(SyncTrigger.MANUAL))
             .build()
-        WorkManager.getInstance(context)
-            .enqueueUniqueWork(MANUAL_UNIQUE_NAME, ExistingWorkPolicy.KEEP, request)
+        WorkManager.getInstance(context).enqueue(request)
     }
 
     private fun enqueuePeriodic(context: Context, policy: ExistingPeriodicWorkPolicy) {

@@ -26,7 +26,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -37,7 +38,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -48,7 +50,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -59,7 +62,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - (FORCED_REENQUEUE_GRACE_MILLIS - 1),
             ),
@@ -70,9 +74,34 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - FORCED_REENQUEUE_GRACE_MILLIS,
+            ),
+        )
+    }
+
+    @Test fun `a signed-out install clears any standing stall alert`() {
+        assertEquals(
+            SyncRecoveryAction.CLEAR_ALERT,
+            syncRecoveryAction(
+                signedIn = false,
+                nowMillis = now,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                lastForcedReenqueueMillis = now - FORCED_REENQUEUE_GRACE_MILLIS,
+            ),
+        )
+    }
+
+    @Test fun `a signed-out install with a fresh sync still clears the alert`() {
+        assertEquals(
+            SyncRecoveryAction.CLEAR_ALERT,
+            syncRecoveryAction(
+                signedIn = false,
+                nowMillis = now,
+                lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
+                lastForcedReenqueueMillis = neverForced,
             ),
         )
     }
@@ -81,7 +110,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
-                now,
+                signedIn = true,
+                nowMillis = now,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
