@@ -101,4 +101,9 @@ class SyncAttemptTest {
         val clean = SyncOutcome.entries.filter { it.isClean }.toSet()
         assertEquals(setOf(SyncOutcome.SUCCESS, SyncOutcome.NO_EVENTS), clean)
     }
+
+    @Test fun `only the periodic trigger runs unattended`() {
+        val unattended = SyncTrigger.entries.filter { it.unattended }.toSet()
+        assertEquals(setOf(SyncTrigger.PERIODIC), unattended)
+    }
 }

@@ -7,9 +7,9 @@ import com.nestegg.btlogger.storage.extractLong
 import com.nestegg.btlogger.storage.extractString
 import com.nestegg.btlogger.storage.extractStringOrNull
 
-enum class SyncTrigger(val wireName: String) {
-    PERIODIC("periodic"),
-    MANUAL("manual");
+enum class SyncTrigger(val wireName: String, val unattended: Boolean) {
+    PERIODIC("periodic", true),
+    MANUAL("manual", false);
 
     companion object {
         fun fromWireName(raw: String?): SyncTrigger =

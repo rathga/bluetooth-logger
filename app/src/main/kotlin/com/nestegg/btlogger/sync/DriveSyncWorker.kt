@@ -28,30 +28,38 @@ class DriveSyncWorker(
 
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
-        val setup = readSetupStatus(applicationContext)
-        val networkValidated = isActiveNetworkValidated(applicationContext)
-
-        if (!syncInFlight.tryAcquire()) {
-            Log.i(TAG, "A sync is already in flight; journalling the skip and asking to be retried")
-            journal.append(
-                attempt(
-                    trigger, SyncOutcome.ALREADY_RUNNING, 0, null, setup.batteryExempt, networkValidated,
-                ),
-            )
-            return Result.retry()
-        }
+        var batteryExempt = false
+        var networkValidated = false
         return try {
-            runSync(trigger, setup, networkValidated)
+            val setup = readSetupStatus(applicationContext)
+            batteryExempt = setup.batteryExempt
+            networkValidated = isActiveNetworkValidated(applicationContext)
+
+            if (!syncInFlight.tryAcquire()) {
+                Log.i(TAG, "A sync is already in flight; journalling the skip")
+                journal.append(
+                    attempt(
+                        trigger, SyncOutcome.ALREADY_RUNNING, 0, null, batteryExempt, networkValidated,
+                    ),
+                )
+                return retryOrFail(trigger)
+            }
+            try {
+                runSync(trigger, setup, networkValidated)
+            } finally {
+                syncInFlight.release()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Sync aborted before completion", e)
             val aborted = attempt(
-                trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName, setup.batteryExempt, networkValidated,
+                trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName, batteryExempt, networkValidated,
             )
             record(aborted, Result.failure())
-        } finally {
-            syncInFlight.release()
         }
     }
+
+    private fun retryOrFail(trigger: SyncTrigger): Result =
+        if (trigger.unattended) Result.retry() else Result.failure()
 
     private fun runSync(trigger: SyncTrigger, setup: SetupStatus, networkValidated: Boolean): Result {
         SetupNotifier.update(applicationContext, setup)
@@ -86,8 +94,8 @@ class DriveSyncWorker(
         } catch (e: UserRecoverableAuthException) {
             recordAuthNeeded(e)
         } catch (e: IOException) {
-            Log.w(TAG, "Transient sync failure; will retry", e)
-            record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), Result.retry())
+            Log.w(TAG, "Transient sync failure; the next scheduled run picks it up", e)
+            record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), retryOrFail(trigger))
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             record(attemptFor(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())

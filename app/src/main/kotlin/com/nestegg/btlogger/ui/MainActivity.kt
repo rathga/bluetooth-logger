@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
 
     private fun triggerSyncNow() {
         SyncScheduler.syncNow(this)
-        Log.i(TAG, "Manual sync enqueued")
+        Log.i(TAG, "Manual sync requested")
     }
 
     private fun requestNeededPermissions() {
