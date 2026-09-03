@@ -19,12 +19,19 @@ class SyncState(private val prefs: SharedPreferences) {
     val lastSuccessMillis: Long
         get() = prefs.getLong(KEY_LAST_SUCCESS, 0L)
 
+    val lastForcedReenqueueMillis: Long
+        get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
+
     fun recordAttempt(attempt: SyncAttempt) {
         prefs.edit {
             putLong(KEY_LAST_ATTEMPT, attempt.utcTimestamp)
             putString(KEY_LAST_OUTCOME, attempt.outcome.wireName)
             if (attempt.outcome.isClean) putLong(KEY_LAST_SUCCESS, attempt.utcTimestamp)
         }
+    }
+
+    fun recordForcedReenqueue(nowMillis: Long) {
+        prefs.edit { putLong(KEY_LAST_FORCED_REENQUEUE, nowMillis) }
     }
 
     fun offsetFor(yearMonth: String): Long =
@@ -42,6 +49,7 @@ class SyncState(private val prefs: SharedPreferences) {
         private const val KEY_LAST_ATTEMPT = "last_attempt_millis"
         private const val KEY_LAST_OUTCOME = "last_attempt_outcome"
         private const val KEY_LAST_SUCCESS = "last_success_millis"
+        private const val KEY_LAST_FORCED_REENQUEUE = "last_forced_reenqueue_millis"
 
         fun from(context: Context): SyncState =
             SyncState(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))

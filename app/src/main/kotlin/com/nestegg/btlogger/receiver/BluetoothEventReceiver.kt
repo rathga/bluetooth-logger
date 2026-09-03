@@ -7,9 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import com.nestegg.btlogger.setup.SetupNotifier
+import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
+import com.nestegg.btlogger.sync.recoverStalledSync
 import java.util.concurrent.Executors
 
 /**
@@ -49,9 +52,12 @@ class BluetoothEventReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
         diskIo.execute {
             try {
-                EventStore(appContext).append(event)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to persist $event", e)
+                runCatching { EventStore(appContext).append(event) }
+                    .onFailure { Log.e(TAG, "Failed to persist $event", it) }
+                runCatching { SetupNotifier.update(appContext, readSetupStatus(appContext)) }
+                    .onFailure { Log.e(TAG, "Setup-health check failed", it) }
+                runCatching { recoverStalledSync(appContext) }
+                    .onFailure { Log.e(TAG, "Sync watchdog failed", it) }
             } finally {
                 pendingResult.finish()
             }

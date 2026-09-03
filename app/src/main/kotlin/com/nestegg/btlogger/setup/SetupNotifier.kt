@@ -15,6 +15,7 @@ object SetupNotifier {
     private const val CHANNEL_ID = "setup-health"
     private const val NOTIFICATION_ID = 1
     private const val AUTH_NOTIFICATION_ID = 2
+    private const val SYNC_STALLED_NOTIFICATION_ID = 3
 
     fun createChannel(context: Context) {
         val channel = NotificationChannel(
@@ -54,6 +55,19 @@ object SetupNotifier {
 
     fun clearAuthNeeded(context: Context) {
         NotificationManagerCompat.from(context).cancel(AUTH_NOTIFICATION_ID)
+    }
+
+    fun notifySyncStalled(context: Context) {
+        post(
+            context,
+            SYNC_STALLED_NOTIFICATION_ID,
+            title = "Bluetooth Logger has stopped syncing",
+            text = "Recovery did not take - tap to sync manually.",
+        )
+    }
+
+    fun clearSyncStalled(context: Context) {
+        NotificationManagerCompat.from(context).cancel(SYNC_STALLED_NOTIFICATION_ID)
     }
 
     private fun post(context: Context, id: Int, title: String, text: String) {

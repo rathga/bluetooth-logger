@@ -15,6 +15,7 @@ import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
 import java.io.IOException
+import java.util.concurrent.Semaphore
 
 class DriveSyncWorker(
     appContext: Context,
@@ -25,11 +26,17 @@ class DriveSyncWorker(
 
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
+        if (!syncInFlight.tryAcquire()) {
+            Log.w(TAG, "A sync is already running; skipping this $trigger run")
+            return Result.success()
+        }
         return try {
             runSync(trigger)
         } catch (e: Exception) {
             Log.e(TAG, "Sync aborted before completion", e)
             record(attempt(trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
+        } finally {
+            syncInFlight.release()
         }
     }
 
@@ -122,7 +129,10 @@ class DriveSyncWorker(
         syncState.recordAttempt(attempt)
         val journal = SyncJournal(applicationContext)
         journal.append(attempt)
-        if (attempt.outcome.isClean) SetupNotifier.clearAuthNeeded(applicationContext)
+        if (attempt.outcome.isClean) {
+            SetupNotifier.clearAuthNeeded(applicationContext)
+            SetupNotifier.clearSyncStalled(applicationContext)
+        }
         uploadDiagnostics(journal)
     }
 
@@ -154,8 +164,8 @@ class DriveSyncWorker(
     }
 
     companion object {
-        const val UNIQUE_NAME = "drive-sync"
         const val KEY_TRIGGER = "trigger"
         private const val TAG = "DriveSyncWorker"
+        private val syncInFlight = Semaphore(1)
     }
 }

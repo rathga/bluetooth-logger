@@ -37,9 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -50,11 +47,10 @@ import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
-import com.nestegg.btlogger.sync.DriveSyncWorker
 import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD_MILLIS
 import com.nestegg.btlogger.sync.SyncOutcome
+import com.nestegg.btlogger.sync.SyncScheduler
 import com.nestegg.btlogger.sync.SyncState
-import com.nestegg.btlogger.sync.SyncTrigger
 import com.nestegg.btlogger.sync.isSyncStale
 import java.text.DateFormat
 import java.util.Date
@@ -141,10 +137,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun triggerSyncNow() {
-        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-            .setInputData(workDataOf(DriveSyncWorker.KEY_TRIGGER to SyncTrigger.MANUAL.wireName))
-            .build()
-        WorkManager.getInstance(this).enqueue(request)
+        SyncScheduler.syncNow(this)
         Log.i(TAG, "Manual sync enqueued")
     }
 
