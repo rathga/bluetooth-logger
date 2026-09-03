@@ -121,7 +121,9 @@ non-dispatch, Doze, Samsung's *Never sleeping apps* list, real ACL delivery, and
 round-trip (which needs credentials CI does not hold). A green emulator run would prove nothing
 about the two phones, and #4's sync lock has no reachable test seam at all.
 
-**What is verified by hand instead**, on `sm-g981b` / `sm-g981u1`, and recorded in the PR:
+**What is verified by hand instead** — the checklist run on `sm-g981b` / `sm-g981u1`. These runs
+leave no written artifact: nothing in the repo, and nothing on the PR, attests that any given run
+happened, so read the list as the procedure, not as evidence it was followed.
 - `./gradlew :app:installDebug`, then drive sign-in, permission grant, Sync now, and a real
   connect/disconnect.
 - `adb logcat -s BtEventReceiver BtLoggerUi DriveSyncWorker SyncWatchdog`.
