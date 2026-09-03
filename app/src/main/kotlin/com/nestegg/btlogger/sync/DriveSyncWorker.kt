@@ -24,29 +24,40 @@ class DriveSyncWorker(
 
     private val syncState: SyncState by lazy { SyncState.from(applicationContext) }
 
+    private val journal: SyncJournal by lazy { SyncJournal(applicationContext) }
+
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
+        val setup = readSetupStatus(applicationContext)
+        val networkValidated = isActiveNetworkValidated(applicationContext)
+
         if (!syncInFlight.tryAcquire()) {
-            return record(attempt(trigger, SyncOutcome.ALREADY_RUNNING, 0, null), Result.success())
+            Log.i(TAG, "A sync is already in flight; journalling the skip and asking to be retried")
+            journal.append(
+                attempt(
+                    trigger, SyncOutcome.ALREADY_RUNNING, 0, null, setup.batteryExempt, networkValidated,
+                ),
+            )
+            return Result.retry()
         }
         return try {
-            runSync(trigger)
+            runSync(trigger, setup, networkValidated)
         } catch (e: Exception) {
             Log.e(TAG, "Sync aborted before completion", e)
-            record(attempt(trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
+            val aborted = attempt(
+                trigger, SyncOutcome.ERROR, 0, e.javaClass.simpleName, setup.batteryExempt, networkValidated,
+            )
+            record(aborted, Result.failure())
         } finally {
             syncInFlight.release()
         }
     }
 
-    private fun runSync(trigger: SyncTrigger): Result {
-        val setup = readSetupStatus(applicationContext)
+    private fun runSync(trigger: SyncTrigger, setup: SetupStatus, networkValidated: Boolean): Result {
         SetupNotifier.update(applicationContext, setup)
 
         val store = EventStore(applicationContext)
         maybeWriteHeartbeat(store, setup)
-
-        val networkValidated = isActiveNetworkValidated(applicationContext)
 
         fun attemptFor(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) =
             attempt(trigger, outcome, rowsUploaded, errorClass, setup.batteryExempt, networkValidated)
@@ -107,8 +118,8 @@ class DriveSyncWorker(
         outcome: SyncOutcome,
         rowsUploaded: Int,
         errorClass: String?,
-        batteryExempt: Boolean = false,
-        networkValidated: Boolean = false,
+        batteryExempt: Boolean,
+        networkValidated: Boolean,
     ) = SyncAttempt(
         utcTimestamp = System.currentTimeMillis(),
         trigger = trigger,
@@ -126,16 +137,15 @@ class DriveSyncWorker(
 
     private fun persistAndUpload(attempt: SyncAttempt) {
         syncState.recordAttempt(attempt)
-        val journal = SyncJournal(applicationContext)
         journal.append(attempt)
         if (attempt.outcome.isClean) {
             SetupNotifier.clearAuthNeeded(applicationContext)
             SetupNotifier.clearSyncStalled(applicationContext)
         }
-        uploadDiagnostics(journal)
+        uploadDiagnostics()
     }
 
-    private fun uploadDiagnostics(journal: SyncJournal) {
+    private fun uploadDiagnostics() {
         val accountName = syncState.accountName ?: return
         val rows = journal.retainedAttempts().map(CsvFormat::diagnosticsRow)
         if (rows.isEmpty()) return
