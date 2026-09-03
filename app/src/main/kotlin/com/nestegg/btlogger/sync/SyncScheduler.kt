@@ -18,9 +18,9 @@ internal object SyncScheduler {
     fun ensureScheduled(context: Context) =
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.UPDATE)
 
-    fun forceReenqueue(context: Context, syncState: SyncState) {
+    fun forceReenqueue(context: Context) {
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
-        syncState.recordForcedReenqueue(System.currentTimeMillis())
+        SyncState.from(context).recordForcedReenqueue(System.currentTimeMillis())
     }
 
     fun syncNow(context: Context) {

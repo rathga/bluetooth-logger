@@ -19,7 +19,7 @@ class SyncState(private val prefs: SharedPreferences) {
     val lastSuccessMillis: Long
         get() = prefs.getLong(KEY_LAST_SUCCESS, 0L)
 
-    val lastForcedReenqueueMillis: Long
+    internal val lastForcedReenqueueMillis: Long
         get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
 
     fun recordAttempt(attempt: SyncAttempt) {
@@ -30,7 +30,7 @@ class SyncState(private val prefs: SharedPreferences) {
         }
     }
 
-    fun recordForcedReenqueue(nowMillis: Long) {
+    internal fun recordForcedReenqueue(nowMillis: Long) {
         prefs.edit { putLong(KEY_LAST_FORCED_REENQUEUE, nowMillis) }
     }
 

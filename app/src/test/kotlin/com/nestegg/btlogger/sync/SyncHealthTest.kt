@@ -11,7 +11,6 @@ class SyncHealthTest {
     private val neverForced = 0L
     private val neverAttempted = 0L
     private val attempted = now - 1
-    private val graceWindow = 60L * 60 * 1000
 
     @Test fun `fresh success is not stale`() {
         assertFalse(
@@ -136,7 +135,7 @@ class SyncHealthTest {
                 nowMillis = now,
                 lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - (graceWindow - 1),
+                lastForcedReenqueueMillis = now,
             ),
         )
     }
@@ -149,7 +148,7 @@ class SyncHealthTest {
                 nowMillis = now,
                 lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - graceWindow,
+                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }
@@ -162,7 +161,7 @@ class SyncHealthTest {
                 nowMillis = now,
                 lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - graceWindow,
+                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }

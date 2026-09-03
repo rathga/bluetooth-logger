@@ -27,7 +27,7 @@ internal fun recoverStalledSync(context: Context) {
         SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT -> true
     }
 
-    SyncScheduler.forceReenqueue(context, syncState)
+    SyncScheduler.forceReenqueue(context)
     Log.w(TAG, "Sync is stale — forced a fresh sync job registration (alert=$alert)")
 
     if (alert) SetupNotifier.notifySyncStalled(context)
