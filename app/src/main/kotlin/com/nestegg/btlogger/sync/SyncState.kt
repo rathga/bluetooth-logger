@@ -6,9 +6,11 @@ import androidx.core.content.edit
 
 class SyncState(private val prefs: SharedPreferences) {
 
-    var accountName: String?
+    val accountName: String?
         get() = prefs.getString(KEY_ACCOUNT, null)
-        set(value) = prefs.edit { putString(KEY_ACCOUNT, value) }
+
+    internal val signedInSinceMillis: Long
+        get() = prefs.getLong(KEY_SIGNED_IN_SINCE, 0L)
 
     val lastAttemptMillis: Long
         get() = prefs.getLong(KEY_LAST_ATTEMPT, 0L)
@@ -21,6 +23,20 @@ class SyncState(private val prefs: SharedPreferences) {
 
     internal val lastForcedReenqueueMillis: Long
         get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
+
+    internal fun recordSignIn(accountName: String, nowMillis: Long) {
+        prefs.edit {
+            putString(KEY_ACCOUNT, accountName)
+            putLong(KEY_SIGNED_IN_SINCE, nowMillis)
+        }
+    }
+
+    internal fun recordSignOut() {
+        prefs.edit {
+            remove(KEY_ACCOUNT)
+            remove(KEY_SIGNED_IN_SINCE)
+        }
+    }
 
     fun recordAttempt(attempt: SyncAttempt) {
         prefs.edit {
@@ -46,6 +62,7 @@ class SyncState(private val prefs: SharedPreferences) {
     companion object {
         private const val PREFS_NAME = "bt_logger_sync"
         private const val KEY_ACCOUNT = "account_name"
+        private const val KEY_SIGNED_IN_SINCE = "signed_in_since_millis"
         private const val KEY_LAST_ATTEMPT = "last_attempt_millis"
         private const val KEY_LAST_OUTCOME = "last_attempt_outcome"
         private const val KEY_LAST_SUCCESS = "last_success_millis"

@@ -38,9 +38,9 @@ internal object CsvFormat {
         append(',')
         append(csvField(attempt.errorClass ?: ""))
         append(',')
-        append(attempt.batteryExempt)
+        append(attempt.batteryExempt ?: "")
         append(',')
-        append(attempt.networkValidated)
+        append(attempt.networkValidated ?: "")
     }
 
     private fun StringBuilder.appendIsoInstant(millis: Long) {

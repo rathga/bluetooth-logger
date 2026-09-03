@@ -28,8 +28,8 @@ class DriveSyncWorker(
 
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
-        var batteryExempt = false
-        var networkValidated = false
+        var batteryExempt: Boolean? = null
+        var networkValidated: Boolean? = null
 
         fun attemptFor(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) = SyncAttempt(
             utcTimestamp = System.currentTimeMillis(),

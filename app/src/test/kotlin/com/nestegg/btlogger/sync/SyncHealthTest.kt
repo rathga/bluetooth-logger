@@ -9,14 +9,16 @@ class SyncHealthTest {
 
     private val now = 100L * SYNC_STALE_THRESHOLD_MILLIS
     private val neverForced = 0L
-    private val neverAttempted = 0L
-    private val attempted = now - 1
+    private val noSignInStamp = 0L
+    private val neverSucceeded = 0L
+    private val signedInLongAgo = now - 10 * SYNC_STALE_THRESHOLD_MILLIS
+    private val signedInMomentsAgo = now - 1000
 
     @Test fun `fresh success is not stale`() {
         assertFalse(
             isSyncStale(
                 now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
             ),
         )
@@ -26,7 +28,7 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
@@ -36,28 +38,48 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }
 
-    @Test fun `an install that has never attempted a sync is not stale`() {
+    @Test fun `an install signed in moments ago is not yet stale`() {
         assertFalse(
             isSyncStale(
                 now,
-                lastAttemptMillis = neverAttempted,
-                lastSuccessMillis = 0L,
+                signedInSinceMillis = signedInMomentsAgo,
+                lastSuccessMillis = neverSucceeded,
             ),
         )
     }
 
-    @Test fun `attempts that have never succeeded are stale`() {
+    @Test fun `an install signed in long ago that has never synced is stale`() {
         assertTrue(
             isSyncStale(
                 now,
-                lastAttemptMillis = attempted,
-                lastSuccessMillis = 0L,
+                signedInSinceMillis = signedInLongAgo,
+                lastSuccessMillis = neverSucceeded,
+            ),
+        )
+    }
+
+    @Test fun `an install with no recorded sign-in and no success is stale`() {
+        assertTrue(
+            isSyncStale(
+                now,
+                signedInSinceMillis = noSignInStamp,
+                lastSuccessMillis = neverSucceeded,
+            ),
+        )
+    }
+
+    @Test fun `a sign-in newer than the last success restarts the clock`() {
+        assertFalse(
+            isSyncStale(
+                now,
+                signedInSinceMillis = signedInMomentsAgo,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }
@@ -67,35 +89,38 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
                 lastForcedReenqueueMillis = neverForced,
             ),
         )
     }
 
-    @Test fun `an install that has never attempted a sync needs no recovery`() {
+    @Test fun `an install signed in moments ago needs no recovery`() {
         assertEquals(
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = neverAttempted,
-                lastSuccessMillis = 0L,
+                signedInSinceMillis = signedInMomentsAgo,
+                lastSuccessMillis = neverSucceeded,
                 lastForcedReenqueueMillis = neverForced,
             ),
         )
     }
 
-    @Test fun `attempts that have never succeeded are recovered`() {
+    @Test fun `an install whose worker has never run is recovered once the sign-in is old enough`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
-                lastSuccessMillis = 0L,
+                signedInSinceMillis = signedInLongAgo,
+                lastSuccessMillis = neverSucceeded,
                 lastForcedReenqueueMillis = neverForced,
             ),
         )
@@ -106,8 +131,9 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -119,8 +145,9 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -132,8 +159,9 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now,
             ),
@@ -145,10 +173,39 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
+            ),
+        )
+    }
+
+    @Test fun `an offline phone is never alerted, however stale`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            syncRecoveryAction(
+                signedIn = true,
+                networkValidated = false,
+                nowMillis = now,
+                signedInSinceMillis = signedInLongAgo,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
+            ),
+        )
+    }
+
+    @Test fun `an offline phone is not forced either`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            syncRecoveryAction(
+                signedIn = true,
+                networkValidated = false,
+                nowMillis = now,
+                signedInSinceMillis = signedInLongAgo,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                lastForcedReenqueueMillis = neverForced,
             ),
         )
     }
@@ -158,8 +215,9 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
@@ -171,10 +229,25 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
                 lastForcedReenqueueMillis = neverForced,
+            ),
+        )
+    }
+
+    @Test fun `a signed-out install clears the alert even with no network`() {
+        assertEquals(
+            SyncRecoveryAction.CLEAR_ALERT,
+            syncRecoveryAction(
+                signedIn = false,
+                networkValidated = false,
+                nowMillis = now,
+                signedInSinceMillis = signedInLongAgo,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }
@@ -184,8 +257,9 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 nowMillis = now,
-                lastAttemptMillis = attempted,
+                signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
             ),

@@ -38,8 +38,8 @@ data class SyncAttempt(
     val outcome: SyncOutcome,
     val rowsUploaded: Int,
     val errorClass: String?,
-    val batteryExempt: Boolean,
-    val networkValidated: Boolean,
+    val batteryExempt: Boolean?,
+    val networkValidated: Boolean?,
 )
 
 internal fun SyncAttempt.toJsonLine(): String = buildString {
@@ -62,7 +62,7 @@ internal fun parseSyncAttemptOrNull(line: String): SyncAttempt? = runCatching {
     val outcome = SyncOutcome.fromWireName(extractString(line, "outcome")) ?: return null
     val rows = extractInt(line, "rows") ?: return null
     val error = extractStringOrNull(line, "error")
-    val batteryExempt = extractBoolean(line, "battery_exempt") ?: return null
-    val networkValidated = extractBoolean(line, "network_validated") ?: return null
+    val batteryExempt = extractBoolean(line, "battery_exempt")
+    val networkValidated = extractBoolean(line, "network_validated")
     SyncAttempt(ts, trigger, outcome, rows, error, batteryExempt, networkValidated)
 }.getOrNull()

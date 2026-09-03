@@ -53,6 +53,7 @@ import com.nestegg.btlogger.sync.SyncOutcome
 import com.nestegg.btlogger.sync.SyncScheduler
 import com.nestegg.btlogger.sync.SyncState
 import com.nestegg.btlogger.sync.isSyncStale
+import com.nestegg.btlogger.sync.recoverStalledSync
 import java.text.DateFormat
 import java.util.Date
 
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
                 Log.w(TAG, "Sign-in succeeded but no email on account")
                 return@registerForActivityResult
             }
-            SyncState.from(this).accountName = email
+            SyncState.from(this).recordSignIn(email, System.currentTimeMillis())
             Log.i(TAG, "Signed in as $email")
             refreshTick.intValue++
         } catch (e: ApiException) {
@@ -116,6 +117,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        recoverStalledSync(this)
         refreshTick.intValue++
     }
 
@@ -131,7 +133,7 @@ class MainActivity : ComponentActivity() {
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
-                SyncState.from(this).accountName = null
+                SyncState.from(this).recordSignOut()
                 SetupNotifier.clearSyncStalled(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
@@ -192,13 +194,14 @@ private fun StatusScreen(
     val lastAttempt = remember(refreshTick) { syncState.lastAttemptMillis }
     val lastAttemptOutcome = remember(refreshTick) { syncState.lastAttemptOutcome }
     val lastSuccess = remember(refreshTick) { syncState.lastSuccessMillis }
+    val signedInSince = remember(refreshTick) { syncState.signedInSinceMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
 
     val syncStale = account != null &&
-        isSyncStale(System.currentTimeMillis(), lastAttempt, lastSuccess)
+        isSyncStale(System.currentTimeMillis(), signedInSince, lastSuccess)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(

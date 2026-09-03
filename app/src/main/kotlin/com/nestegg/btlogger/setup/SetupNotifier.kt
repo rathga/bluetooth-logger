@@ -62,7 +62,7 @@ object SetupNotifier {
             context,
             SYNC_STALLED_NOTIFICATION_ID,
             title = "Bluetooth Logger has stopped syncing",
-            text = "Recovery did not take - tap to sync manually.",
+            text = "Tap to open the app and force a fresh sync job.",
         )
     }
 
