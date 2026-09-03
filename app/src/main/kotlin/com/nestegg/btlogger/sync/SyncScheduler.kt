@@ -18,8 +18,10 @@ internal object SyncScheduler {
     fun ensureScheduled(context: Context) =
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.UPDATE)
 
-    fun forceReenqueue(context: Context) =
+    fun forceReenqueue(context: Context, syncState: SyncState) {
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
+        syncState.recordForcedReenqueue(System.currentTimeMillis())
+    }
 
     fun syncNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()

@@ -6,7 +6,7 @@ private const val FORCED_REENQUEUE_GRACE_MILLIS = 60L * 60 * 1000
 
 private const val NEVER = 0L
 
-fun isSyncStale(
+internal fun isSyncStale(
     nowMillis: Long,
     lastAttemptMillis: Long,
     lastSuccessMillis: Long,
