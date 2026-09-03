@@ -13,6 +13,7 @@ internal fun recoverStalledSync(context: Context) {
         syncRecoveryAction(
             signedIn = syncState.accountName != null,
             nowMillis = now,
+            lastAttemptMillis = syncState.lastAttemptMillis,
             lastSuccessMillis = syncState.lastSuccessMillis,
             lastForcedReenqueueMillis = syncState.lastForcedReenqueueMillis,
         )

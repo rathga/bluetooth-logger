@@ -21,20 +21,19 @@ internal object SyncScheduler {
 
     fun syncNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-            .setInputData(triggerData(SyncTrigger.MANUAL))
+            .setInputData(triggerData(SyncTrigger.MANUAL.wireName))
             .build()
         WorkManager.getInstance(context).enqueue(request)
     }
 
     private fun enqueuePeriodic(context: Context, policy: ExistingPeriodicWorkPolicy) {
-        // No network constraint: its VALIDATED NetworkRequest is the suspect in issue #4's stall.
         val request = PeriodicWorkRequestBuilder<DriveSyncWorker>(PERIOD_HOURS, TimeUnit.HOURS)
-            .setInputData(triggerData(SyncTrigger.PERIODIC))
+            .setInputData(triggerData(SyncTrigger.PERIODIC.wireName))
             .build()
         WorkManager.getInstance(context)
             .enqueueUniquePeriodicWork(PERIODIC_UNIQUE_NAME, policy, request)
     }
 
-    private fun triggerData(trigger: SyncTrigger) =
-        workDataOf(DriveSyncWorker.KEY_TRIGGER to trigger.wireName)
+    private fun triggerData(triggerWireName: String) =
+        workDataOf(DriveSyncWorker.KEY_TRIGGER to triggerWireName)
 }

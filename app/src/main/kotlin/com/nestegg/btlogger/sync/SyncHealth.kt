@@ -2,14 +2,17 @@ package com.nestegg.btlogger.sync
 
 const val SYNC_STALE_THRESHOLD_MILLIS = 6L * 60 * 60 * 1000
 
-internal const val FORCED_REENQUEUE_GRACE_MILLIS = 60L * 60 * 1000
+private const val FORCED_REENQUEUE_GRACE_MILLIS = 60L * 60 * 1000
 
-// Caller must gate on there having been at least one attempt, or a fresh install reads as stale.
+private const val NEVER = 0L
+
 fun isSyncStale(
     nowMillis: Long,
+    lastAttemptMillis: Long,
     lastSuccessMillis: Long,
     thresholdMillis: Long = SYNC_STALE_THRESHOLD_MILLIS,
-): Boolean = (nowMillis - lastSuccessMillis) >= thresholdMillis
+): Boolean =
+    lastAttemptMillis != NEVER && (nowMillis - lastSuccessMillis) >= thresholdMillis
 
 internal enum class SyncRecoveryAction {
     NONE,
@@ -21,11 +24,12 @@ internal enum class SyncRecoveryAction {
 internal fun syncRecoveryAction(
     signedIn: Boolean,
     nowMillis: Long,
+    lastAttemptMillis: Long,
     lastSuccessMillis: Long,
     lastForcedReenqueueMillis: Long,
 ): SyncRecoveryAction = when {
     !signedIn -> SyncRecoveryAction.CLEAR_ALERT
-    !isSyncStale(nowMillis, lastSuccessMillis) -> SyncRecoveryAction.NONE
+    !isSyncStale(nowMillis, lastAttemptMillis, lastSuccessMillis) -> SyncRecoveryAction.NONE
     lastForcedReenqueueMillis <= lastSuccessMillis -> SyncRecoveryAction.FORCE_REENQUEUE
     nowMillis - lastForcedReenqueueMillis < FORCED_REENQUEUE_GRACE_MILLIS -> SyncRecoveryAction.NONE
     else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT

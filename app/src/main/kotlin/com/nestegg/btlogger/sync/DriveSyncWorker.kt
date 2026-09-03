@@ -27,8 +27,7 @@ class DriveSyncWorker(
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
         if (!syncInFlight.tryAcquire()) {
-            Log.w(TAG, "A sync is already running; skipping this $trigger run")
-            return Result.success()
+            return record(attempt(trigger, SyncOutcome.ALREADY_RUNNING, 0, null), Result.success())
         }
         return try {
             runSync(trigger)

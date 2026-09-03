@@ -20,6 +20,7 @@ enum class SyncTrigger(val wireName: String) {
 enum class SyncOutcome(val wireName: String, val isClean: Boolean, val displayLabel: String) {
     SUCCESS("success", true, "Synced"),
     NO_EVENTS("no-events", true, "Up to date"),
+    ALREADY_RUNNING("already-running", false, "Skipped, sync already running"),
     NO_ACCOUNT("no-account", false, "Not signed in"),
     AUTH_FAILURE("auth-failure", false, "Sign-in needed"),
     IO_RETRY("io-retry", false, "Network issue, will retry"),

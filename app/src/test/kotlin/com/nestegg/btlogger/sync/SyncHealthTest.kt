@@ -9,17 +9,58 @@ class SyncHealthTest {
 
     private val now = 100L * SYNC_STALE_THRESHOLD_MILLIS
     private val neverForced = 0L
+    private val neverAttempted = 0L
+    private val attempted = now - 1
+    private val graceWindow = 60L * 60 * 1000
 
     @Test fun `fresh success is not stale`() {
-        assertFalse(isSyncStale(now, lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1)))
+        assertFalse(
+            isSyncStale(
+                now,
+                lastAttemptMillis = attempted,
+                lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
+            ),
+        )
     }
 
     @Test fun `exactly at the threshold is stale`() {
-        assertTrue(isSyncStale(now, lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS))
+        assertTrue(
+            isSyncStale(
+                now,
+                lastAttemptMillis = attempted,
+                lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
+            ),
+        )
     }
 
     @Test fun `well past the threshold is stale`() {
-        assertTrue(isSyncStale(now, lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS))
+        assertTrue(
+            isSyncStale(
+                now,
+                lastAttemptMillis = attempted,
+                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+            ),
+        )
+    }
+
+    @Test fun `an install that has never attempted a sync is not stale`() {
+        assertFalse(
+            isSyncStale(
+                now,
+                lastAttemptMillis = neverAttempted,
+                lastSuccessMillis = 0L,
+            ),
+        )
+    }
+
+    @Test fun `attempts that have never succeeded are stale`() {
+        assertTrue(
+            isSyncStale(
+                now,
+                lastAttemptMillis = attempted,
+                lastSuccessMillis = 0L,
+            ),
+        )
     }
 
     @Test fun `a sync that is not stale needs no recovery`() {
@@ -28,7 +69,34 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
+                lastForcedReenqueueMillis = neverForced,
+            ),
+        )
+    }
+
+    @Test fun `an install that has never attempted a sync needs no recovery`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            syncRecoveryAction(
+                signedIn = true,
+                nowMillis = now,
+                lastAttemptMillis = neverAttempted,
+                lastSuccessMillis = 0L,
+                lastForcedReenqueueMillis = neverForced,
+            ),
+        )
+    }
+
+    @Test fun `attempts that have never succeeded are recovered`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE,
+            syncRecoveryAction(
+                signedIn = true,
+                nowMillis = now,
+                lastAttemptMillis = attempted,
+                lastSuccessMillis = 0L,
                 lastForcedReenqueueMillis = neverForced,
             ),
         )
@@ -40,6 +108,7 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -52,6 +121,7 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -64,8 +134,9 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - (FORCED_REENQUEUE_GRACE_MILLIS - 1),
+                lastForcedReenqueueMillis = now - (graceWindow - 1),
             ),
         )
     }
@@ -76,8 +147,9 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - FORCED_REENQUEUE_GRACE_MILLIS,
+                lastForcedReenqueueMillis = now - graceWindow,
             ),
         )
     }
@@ -88,8 +160,9 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = false,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - FORCED_REENQUEUE_GRACE_MILLIS,
+                lastForcedReenqueueMillis = now - graceWindow,
             ),
         )
     }
@@ -100,6 +173,7 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = false,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
                 lastForcedReenqueueMillis = neverForced,
             ),
@@ -112,6 +186,7 @@ class SyncHealthTest {
             syncRecoveryAction(
                 signedIn = true,
                 nowMillis = now,
+                lastAttemptMillis = attempted,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
