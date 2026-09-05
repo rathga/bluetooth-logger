@@ -78,8 +78,7 @@ class DriveSyncWorker(
             val months = store.months()
             if (months.isEmpty()) return record(attemptFor(SyncOutcome.NO_EVENTS, 0, null), Result.success())
 
-            val (client, deviceTag) = driveClientAndTag(accountName)
-            val (rowsUploaded, failure) = uploadPendingMonths(store, client, deviceTag, months)
+            val (rowsUploaded, failure) = uploadPendingMonths(store, accountName, months)
 
             if (failure == null) {
                 val outcome = if (rowsUploaded > 0) SyncOutcome.SUCCESS else SyncOutcome.NO_EVENTS
@@ -130,19 +129,19 @@ class DriveSyncWorker(
 
     private fun uploadPendingMonths(
         store: EventStore,
-        client: DriveClient,
-        deviceTag: String,
+        accountName: String,
         months: List<String>,
     ): UploadReport {
+        val (client, deviceTag) = driveClientAndTag(accountName)
         var totalAppended = 0
         for (yearMonth in months) {
             try {
-                val offset = syncState.offsetFor(yearMonth)
+                val offset = syncState.offsetFor(accountName, yearMonth)
                 val chunk = store.unsynced(yearMonth, offset)
                 if (chunk.events.isEmpty()) continue
                 val rows = chunk.events.map(CsvFormat::row)
                 totalAppended += client.appendCsvRows(yearMonth, deviceTag, CsvFormat.HEADER, rows)
-                syncState.setOffsetFor(yearMonth, chunk.newByteOffset)
+                syncState.setOffsetFor(accountName, yearMonth, chunk.newByteOffset)
                 Log.i(TAG, "Appended ${rows.size} row(s) to bluetooth-log-$deviceTag-$yearMonth.csv")
             } catch (e: Exception) {
                 return UploadReport(totalAppended, e)

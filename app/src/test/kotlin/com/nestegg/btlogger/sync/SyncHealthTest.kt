@@ -89,7 +89,6 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
@@ -103,7 +102,6 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInMomentsAgo,
                 lastSuccessMillis = neverSucceeded,
@@ -117,7 +115,6 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = neverSucceeded,
@@ -131,7 +128,6 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
@@ -145,7 +141,6 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
@@ -159,7 +154,6 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
@@ -173,39 +167,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
                 lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
-            ),
-        )
-    }
-
-    @Test fun `an offline phone is never alerted, however stale`() {
-        assertEquals(
-            SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = false,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
-            ),
-        )
-    }
-
-    @Test fun `an offline phone is not forced either`() {
-        assertEquals(
-            SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = false,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = neverForced,
             ),
         )
     }
@@ -215,7 +180,6 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
@@ -229,25 +193,10 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
                 lastForcedReenqueueMillis = neverForced,
-            ),
-        )
-    }
-
-    @Test fun `a signed-out install clears the alert even with no network`() {
-        assertEquals(
-            SyncRecoveryAction.CLEAR_ALERT,
-            syncRecoveryAction(
-                signedIn = false,
-                networkValidated = false,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
             ),
         )
     }
@@ -257,7 +206,6 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                networkValidated = true,
                 nowMillis = now,
                 signedInSinceMillis = signedInLongAgo,
                 lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,

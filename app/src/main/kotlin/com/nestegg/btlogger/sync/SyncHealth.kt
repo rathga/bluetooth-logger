@@ -21,14 +21,12 @@ internal enum class SyncRecoveryAction {
 
 internal fun syncRecoveryAction(
     signedIn: Boolean,
-    networkValidated: Boolean,
     nowMillis: Long,
     signedInSinceMillis: Long,
     lastSuccessMillis: Long,
     lastForcedReenqueueMillis: Long,
 ): SyncRecoveryAction = when {
     !signedIn -> SyncRecoveryAction.CLEAR_ALERT
-    !networkValidated -> SyncRecoveryAction.NONE
     !isSyncStale(nowMillis, signedInSinceMillis, lastSuccessMillis) -> SyncRecoveryAction.NONE
     lastForcedReenqueueMillis <= lastSuccessMillis -> SyncRecoveryAction.FORCE_REENQUEUE
     nowMillis - lastForcedReenqueueMillis < FORCED_REENQUEUE_GRACE_MILLIS -> SyncRecoveryAction.NONE
