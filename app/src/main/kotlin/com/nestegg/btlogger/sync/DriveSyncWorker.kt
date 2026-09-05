@@ -28,8 +28,24 @@ class DriveSyncWorker(
 
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
-        val setup = readSetupStatus(applicationContext)
-        val networkValidated = isActiveNetworkValidated(applicationContext)
+
+        val (setup, networkValidated) = try {
+            readSetupStatus(applicationContext) to isActiveNetworkValidated(applicationContext)
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not read device state; the run is journalled and abandoned", e)
+            return record(
+                SyncAttempt(
+                    utcTimestamp = System.currentTimeMillis(),
+                    trigger = trigger,
+                    outcome = SyncOutcome.ERROR,
+                    rowsUploaded = 0,
+                    errorClass = e.javaClass.simpleName,
+                    batteryExempt = null,
+                    networkValidated = null,
+                ),
+                Result.failure(),
+            )
+        }
 
         fun attemptFor(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) = SyncAttempt(
             utcTimestamp = System.currentTimeMillis(),
@@ -47,10 +63,13 @@ class DriveSyncWorker(
             val store = EventStore(applicationContext)
             maybeWriteHeartbeat(store, setup)
 
-            fun recordAuthNeeded(e: Exception): Result {
+            fun recordAuthNeeded(e: Exception, rowsUploaded: Int): Result {
                 Log.w(TAG, "Drive auth needs user action — open the app and sign in again", e)
                 SetupNotifier.notifyAuthNeeded(applicationContext)
-                return record(attemptFor(SyncOutcome.AUTH_FAILURE, 0, e.javaClass.simpleName), Result.failure())
+                return record(
+                    attemptFor(SyncOutcome.AUTH_FAILURE, rowsUploaded, e.javaClass.simpleName),
+                    Result.failure(),
+                )
             }
 
             val accountName = syncState.accountName
@@ -60,21 +79,30 @@ class DriveSyncWorker(
             if (months.isEmpty()) return record(attemptFor(SyncOutcome.NO_EVENTS, 0, null), Result.success())
 
             val (client, deviceTag) = driveClientAndTag(accountName)
+            val (rowsUploaded, failure) = uploadPendingMonths(store, client, deviceTag, months)
 
-            return try {
-                val totalAppended = uploadPendingMonths(store, client, deviceTag, months)
-                val outcome = if (totalAppended > 0) SyncOutcome.SUCCESS else SyncOutcome.NO_EVENTS
-                record(attemptFor(outcome, totalAppended, null), Result.success())
-            } catch (e: UserRecoverableAuthIOException) {
-                recordAuthNeeded(e)
-            } catch (e: UserRecoverableAuthException) {
-                recordAuthNeeded(e)
-            } catch (e: IOException) {
-                Log.w(TAG, "Transient sync failure; the next scheduled run picks it up", e)
-                record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), retryOrFail(trigger.unattended))
-            } catch (e: Exception) {
-                Log.e(TAG, "Sync failed", e)
-                record(attemptFor(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
+            if (failure == null) {
+                val outcome = if (rowsUploaded > 0) SyncOutcome.SUCCESS else SyncOutcome.NO_EVENTS
+                return record(attemptFor(outcome, rowsUploaded, null), Result.success())
+            }
+
+            return when (failure) {
+                is UserRecoverableAuthIOException, is UserRecoverableAuthException ->
+                    recordAuthNeeded(failure, rowsUploaded)
+                is IOException -> {
+                    Log.w(TAG, "Transient sync failure; the next scheduled run picks it up", failure)
+                    record(
+                        attemptFor(SyncOutcome.IO_RETRY, rowsUploaded, failure.javaClass.simpleName),
+                        retryOrFail(trigger.unattended),
+                    )
+                }
+                else -> {
+                    Log.e(TAG, "Sync failed", failure)
+                    record(
+                        attemptFor(SyncOutcome.ERROR, rowsUploaded, failure.javaClass.simpleName),
+                        Result.failure(),
+                    )
+                }
             }
         }
 
@@ -98,23 +126,29 @@ class DriveSyncWorker(
     private fun retryOrFail(unattended: Boolean): Result =
         if (unattended) Result.retry() else Result.failure()
 
+    private data class UploadReport(val rowsUploaded: Int, val failure: Exception?)
+
     private fun uploadPendingMonths(
         store: EventStore,
         client: DriveClient,
         deviceTag: String,
         months: List<String>,
-    ): Int {
+    ): UploadReport {
         var totalAppended = 0
         for (yearMonth in months) {
-            val offset = syncState.offsetFor(yearMonth)
-            val chunk = store.unsynced(yearMonth, offset)
-            if (chunk.events.isEmpty()) continue
-            val rows = chunk.events.map(CsvFormat::row)
-            totalAppended += client.appendCsvRows(yearMonth, deviceTag, CsvFormat.HEADER, rows)
-            syncState.setOffsetFor(yearMonth, chunk.newByteOffset)
-            Log.i(TAG, "Appended ${rows.size} row(s) to bluetooth-log-$deviceTag-$yearMonth.csv")
+            try {
+                val offset = syncState.offsetFor(yearMonth)
+                val chunk = store.unsynced(yearMonth, offset)
+                if (chunk.events.isEmpty()) continue
+                val rows = chunk.events.map(CsvFormat::row)
+                totalAppended += client.appendCsvRows(yearMonth, deviceTag, CsvFormat.HEADER, rows)
+                syncState.setOffsetFor(yearMonth, chunk.newByteOffset)
+                Log.i(TAG, "Appended ${rows.size} row(s) to bluetooth-log-$deviceTag-$yearMonth.csv")
+            } catch (e: Exception) {
+                return UploadReport(totalAppended, e)
+            }
         }
-        return totalAppended
+        return UploadReport(totalAppended, null)
     }
 
     private fun record(attempt: SyncAttempt, result: Result): Result {
