@@ -201,7 +201,11 @@ private fun StatusScreen(
     val setup = remember(refreshTick) { readSetupStatus(context) }
 
     val syncStale = account != null &&
-        isSyncStale(System.currentTimeMillis(), signedInSince, lastSuccess)
+        isSyncStale(
+            nowMillis = System.currentTimeMillis(),
+            signedInSinceMillis = signedInSince,
+            lastSuccessMillis = lastSuccess,
+        )
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(

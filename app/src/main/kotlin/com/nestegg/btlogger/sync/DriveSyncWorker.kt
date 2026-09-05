@@ -28,8 +28,8 @@ class DriveSyncWorker(
 
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
-        var batteryExempt: Boolean? = null
-        var networkValidated: Boolean? = null
+        val setup = readSetupStatus(applicationContext)
+        val networkValidated = isActiveNetworkValidated(applicationContext)
 
         fun attemptFor(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) = SyncAttempt(
             utcTimestamp = System.currentTimeMillis(),
@@ -37,11 +37,11 @@ class DriveSyncWorker(
             outcome = outcome,
             rowsUploaded = rowsUploaded,
             errorClass = errorClass,
-            batteryExempt = batteryExempt,
+            batteryExempt = setup.batteryExempt,
             networkValidated = networkValidated,
         )
 
-        fun runSync(setup: SetupStatus): Result {
+        fun runSync(): Result {
             SetupNotifier.update(applicationContext, setup)
 
             val store = EventStore(applicationContext)
@@ -66,13 +66,12 @@ class DriveSyncWorker(
                 val outcome = if (totalAppended > 0) SyncOutcome.SUCCESS else SyncOutcome.NO_EVENTS
                 record(attemptFor(outcome, totalAppended, null), Result.success())
             } catch (e: UserRecoverableAuthIOException) {
-                // Offset untouched, so the next sync after re-auth resumes where we stopped.
                 recordAuthNeeded(e)
             } catch (e: UserRecoverableAuthException) {
                 recordAuthNeeded(e)
             } catch (e: IOException) {
                 Log.w(TAG, "Transient sync failure; the next scheduled run picks it up", e)
-                record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), retryOrFail(trigger))
+                record(attemptFor(SyncOutcome.IO_RETRY, 0, e.javaClass.simpleName), retryOrFail(trigger.unattended))
             } catch (e: Exception) {
                 Log.e(TAG, "Sync failed", e)
                 record(attemptFor(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
@@ -80,17 +79,13 @@ class DriveSyncWorker(
         }
 
         return try {
-            val setup = readSetupStatus(applicationContext)
-            batteryExempt = setup.batteryExempt
-            networkValidated = isActiveNetworkValidated(applicationContext)
-
             if (!syncInFlight.tryAcquire()) {
                 Log.i(TAG, "A sync is already in flight; journalling the skip")
                 journal.append(attemptFor(SyncOutcome.ALREADY_RUNNING, 0, null))
-                return retryOrFail(trigger)
+                return retryOrFail(trigger.unattended)
             }
             try {
-                runSync(setup)
+                runSync()
             } finally {
                 syncInFlight.release()
             }
@@ -100,8 +95,8 @@ class DriveSyncWorker(
         }
     }
 
-    private fun retryOrFail(trigger: SyncTrigger): Result =
-        if (trigger.unattended) Result.retry() else Result.failure()
+    private fun retryOrFail(unattended: Boolean): Result =
+        if (unattended) Result.retry() else Result.failure()
 
     private fun uploadPendingMonths(
         store: EventStore,
