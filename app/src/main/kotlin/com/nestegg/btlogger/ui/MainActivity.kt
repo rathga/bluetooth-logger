@@ -48,13 +48,14 @@ import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
-import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD_MILLIS
+import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD
 import com.nestegg.btlogger.sync.SyncOutcome
 import com.nestegg.btlogger.sync.SyncScheduler
 import com.nestegg.btlogger.sync.SyncState
 import com.nestegg.btlogger.sync.isSyncStale
 import com.nestegg.btlogger.sync.recoverStalledSync
 import java.text.DateFormat
+import java.time.Instant
 import java.util.Date
 
 class MainActivity : ComponentActivity() {
@@ -202,9 +203,9 @@ private fun StatusScreen(
 
     val syncStale = account != null &&
         isSyncStale(
-            nowMillis = System.currentTimeMillis(),
-            signedInSinceMillis = signedInSince,
-            lastSuccessMillis = lastSuccess,
+            now = Instant.now(),
+            signedInSince = Instant.ofEpochMilli(signedInSince),
+            lastSuccess = Instant.ofEpochMilli(lastSuccess),
         )
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -326,7 +327,7 @@ private fun RecentEventRow(event: BtEvent) {
 
 private const val RECENT_LIMIT = 10
 
-private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD_MILLIS / (60L * 60 * 1000)
+private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD.toHours()
 
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)

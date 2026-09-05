@@ -1,16 +1,19 @@
 package com.nestegg.btlogger.sync
 
-const val SYNC_STALE_THRESHOLD_MILLIS = 6L * 60 * 60 * 1000
+import java.time.Duration
+import java.time.Instant
 
-private const val FORCED_REENQUEUE_GRACE_MILLIS = 60L * 60 * 1000
+val SYNC_STALE_THRESHOLD: Duration = Duration.ofHours(6)
+
+private val FORCED_REENQUEUE_GRACE: Duration = Duration.ofHours(1)
 
 internal fun isSyncStale(
-    nowMillis: Long,
-    signedInSinceMillis: Long,
-    lastSuccessMillis: Long,
-    thresholdMillis: Long = SYNC_STALE_THRESHOLD_MILLIS,
+    now: Instant,
+    signedInSince: Instant,
+    lastSuccess: Instant,
+    threshold: Duration = SYNC_STALE_THRESHOLD,
 ): Boolean =
-    (nowMillis - maxOf(lastSuccessMillis, signedInSinceMillis)) >= thresholdMillis
+    Duration.between(maxOf(lastSuccess, signedInSince), now) >= threshold
 
 internal enum class SyncRecoveryAction {
     NONE,
@@ -21,14 +24,14 @@ internal enum class SyncRecoveryAction {
 
 internal fun syncRecoveryAction(
     signedIn: Boolean,
-    nowMillis: Long,
-    signedInSinceMillis: Long,
-    lastSuccessMillis: Long,
-    lastForcedReenqueueMillis: Long,
+    now: Instant,
+    signedInSince: Instant,
+    lastSuccess: Instant,
+    lastForcedReenqueue: Instant,
 ): SyncRecoveryAction = when {
     !signedIn -> SyncRecoveryAction.CLEAR_ALERT
-    !isSyncStale(nowMillis, signedInSinceMillis, lastSuccessMillis) -> SyncRecoveryAction.NONE
-    lastForcedReenqueueMillis <= lastSuccessMillis -> SyncRecoveryAction.FORCE_REENQUEUE
-    nowMillis - lastForcedReenqueueMillis < FORCED_REENQUEUE_GRACE_MILLIS -> SyncRecoveryAction.NONE
+    !isSyncStale(now, signedInSince, lastSuccess) -> SyncRecoveryAction.NONE
+    lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
+    Duration.between(lastForcedReenqueue, now) < FORCED_REENQUEUE_GRACE -> SyncRecoveryAction.NONE
     else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT
 }

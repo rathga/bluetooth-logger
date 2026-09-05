@@ -4,22 +4,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class SyncHealthTest {
 
-    private val now = 100L * SYNC_STALE_THRESHOLD_MILLIS
-    private val neverForced = 0L
-    private val noSignInStamp = 0L
-    private val neverSucceeded = 0L
-    private val signedInLongAgo = now - 10 * SYNC_STALE_THRESHOLD_MILLIS
-    private val signedInMomentsAgo = now - 1000
+    private val now: Instant = Instant.EPOCH + SYNC_STALE_THRESHOLD.multipliedBy(100)
+    private val neverForced: Instant = Instant.EPOCH
+    private val noSignInStamp: Instant = Instant.EPOCH
+    private val neverSucceeded: Instant = Instant.EPOCH
+    private val signedInLongAgo: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(10)
+    private val signedInMomentsAgo: Instant = now.minusSeconds(1)
 
     @Test fun `fresh success is not stale`() {
         assertFalse(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
             ),
         )
     }
@@ -28,8 +29,8 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD,
             ),
         )
     }
@@ -38,8 +39,8 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
             ),
         )
     }
@@ -48,8 +49,8 @@ class SyncHealthTest {
         assertFalse(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInMomentsAgo,
-                lastSuccessMillis = neverSucceeded,
+                signedInSince = signedInMomentsAgo,
+                lastSuccess = neverSucceeded,
             ),
         )
     }
@@ -58,8 +59,8 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = neverSucceeded,
+                signedInSince = signedInLongAgo,
+                lastSuccess = neverSucceeded,
             ),
         )
     }
@@ -68,8 +69,8 @@ class SyncHealthTest {
         assertTrue(
             isSyncStale(
                 now,
-                signedInSinceMillis = noSignInStamp,
-                lastSuccessMillis = neverSucceeded,
+                signedInSince = noSignInStamp,
+                lastSuccess = neverSucceeded,
             ),
         )
     }
@@ -78,8 +79,8 @@ class SyncHealthTest {
         assertFalse(
             isSyncStale(
                 now,
-                signedInSinceMillis = signedInMomentsAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                signedInSince = signedInMomentsAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
             ),
         )
     }
@@ -89,10 +90,10 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -102,10 +103,10 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInMomentsAgo,
-                lastSuccessMillis = neverSucceeded,
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInMomentsAgo,
+                lastSuccess = neverSucceeded,
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -115,10 +116,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = neverSucceeded,
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = neverSucceeded,
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -128,10 +129,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -141,10 +142,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD,
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -154,10 +155,10 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = now,
             ),
         )
     }
@@ -167,10 +168,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
             ),
         )
     }
@@ -180,10 +181,10 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - 2 * SYNC_STALE_THRESHOLD_MILLIS,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
             ),
         )
     }
@@ -193,10 +194,10 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - (SYNC_STALE_THRESHOLD_MILLIS - 1),
-                lastForcedReenqueueMillis = neverForced,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
+                lastForcedReenqueue = neverForced,
             ),
         )
     }
@@ -206,10 +207,10 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
-                nowMillis = now,
-                signedInSinceMillis = signedInLongAgo,
-                lastSuccessMillis = now - SYNC_STALE_THRESHOLD_MILLIS,
-                lastForcedReenqueueMillis = now - 3 * SYNC_STALE_THRESHOLD_MILLIS,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD,
+                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
             ),
         )
     }
