@@ -174,7 +174,7 @@ class DriveSyncWorker(
         journal.append(attempt)
         if (attempt.outcome.isClean) {
             SetupNotifier.clearAuthNeeded(applicationContext)
-            SetupNotifier.clearSyncStalled(applicationContext)
+            SetupNotifier.clearSyncAlert(applicationContext)
         }
         uploadDiagnostics()
     }

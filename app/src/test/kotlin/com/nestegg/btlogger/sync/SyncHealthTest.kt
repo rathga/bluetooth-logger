@@ -90,6 +90,7 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
@@ -103,6 +104,7 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInMomentsAgo,
                 lastSuccess = neverSucceeded,
@@ -116,6 +118,7 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = neverSucceeded,
@@ -129,6 +132,21 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = neverForced,
+            ),
+        )
+    }
+
+    @Test fun `an offline phone stale with no prior force is forced all the same`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE,
+            syncRecoveryAction(
+                signedIn = true,
+                networkValidated = false,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
@@ -142,6 +160,7 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD,
@@ -155,6 +174,7 @@ class SyncHealthTest {
             SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
@@ -163,11 +183,40 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a force whose grace window has expired escalates to an alert`() {
+    @Test fun `an offline phone inside the grace window is still left alone`() {
         assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
+            SyncRecoveryAction.NONE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = false,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = now,
+            ),
+        )
+    }
+
+    @Test fun `a force whose grace window has expired escalates to a stall alert`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
+            syncRecoveryAction(
+                signedIn = true,
+                networkValidated = true,
+                now = now,
+                signedInSince = signedInLongAgo,
+                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
+            ),
+        )
+    }
+
+    @Test fun `an offline phone past the grace window is told it is waiting for a connection`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE,
+            syncRecoveryAction(
+                signedIn = true,
+                networkValidated = false,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
@@ -181,6 +230,7 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
@@ -194,6 +244,7 @@ class SyncHealthTest {
             SyncRecoveryAction.CLEAR_ALERT,
             syncRecoveryAction(
                 signedIn = false,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
@@ -207,6 +258,7 @@ class SyncHealthTest {
             SyncRecoveryAction.FORCE_REENQUEUE,
             syncRecoveryAction(
                 signedIn = true,
+                networkValidated = true,
                 now = now,
                 signedInSince = signedInLongAgo,
                 lastSuccess = now - SYNC_STALE_THRESHOLD,

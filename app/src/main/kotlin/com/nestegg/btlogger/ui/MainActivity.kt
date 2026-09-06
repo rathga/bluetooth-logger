@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
                 SyncState.from(this).recordSignOut()
-                SetupNotifier.clearSyncStalled(this)
+                SetupNotifier.clearSyncAlert(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
             }

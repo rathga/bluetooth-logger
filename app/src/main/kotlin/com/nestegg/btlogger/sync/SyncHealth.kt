@@ -19,11 +19,13 @@ internal enum class SyncRecoveryAction {
     NONE,
     CLEAR_ALERT,
     FORCE_REENQUEUE,
-    FORCE_REENQUEUE_AND_ALERT,
+    FORCE_REENQUEUE_AND_ALERT_STALLED,
+    FORCE_REENQUEUE_AND_ALERT_OFFLINE,
 }
 
 internal fun syncRecoveryAction(
     signedIn: Boolean,
+    networkValidated: Boolean,
     now: Instant,
     signedInSince: Instant,
     lastSuccess: Instant,
@@ -33,5 +35,6 @@ internal fun syncRecoveryAction(
     !isSyncStale(now, signedInSince, lastSuccess) -> SyncRecoveryAction.NONE
     lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
     Duration.between(lastForcedReenqueue, now) < FORCED_REENQUEUE_GRACE -> SyncRecoveryAction.NONE
-    else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT
+    networkValidated -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED
+    else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE
 }
