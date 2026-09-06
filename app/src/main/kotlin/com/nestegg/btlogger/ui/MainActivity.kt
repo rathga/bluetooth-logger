@@ -201,12 +201,11 @@ private fun StatusScreen(
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
 
-    val syncStale = account != null &&
-        isSyncStale(
-            now = Instant.now(),
-            signedInSince = Instant.ofEpochMilli(signedInSince),
-            lastSuccess = Instant.ofEpochMilli(lastSuccess),
-        )
+    val syncStale = isSyncStale(
+        now = Instant.now(),
+        signedInSince = signedInSince?.let(Instant::ofEpochMilli),
+        lastSuccess = Instant.ofEpochMilli(lastSuccess),
+    )
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(

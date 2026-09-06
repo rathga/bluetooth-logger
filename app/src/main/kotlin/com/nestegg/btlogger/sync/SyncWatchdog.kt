@@ -2,6 +2,7 @@ package com.nestegg.btlogger.sync
 
 import android.content.Context
 import android.util.Log
+import com.nestegg.btlogger.AppForeground
 import com.nestegg.btlogger.setup.SetupNotifier
 import com.nestegg.btlogger.setup.isActiveNetworkValidated
 import java.time.Instant
@@ -11,10 +12,10 @@ private const val TAG = "SyncWatchdog"
 internal fun recoverStalledSync(context: Context) {
     val syncState = SyncState.from(context)
     val action = syncRecoveryAction(
-        signedIn = syncState.accountName != null,
         networkValidated = isActiveNetworkValidated(context),
+        appInForeground = AppForeground.isForeground,
         now = Instant.now(),
-        signedInSince = Instant.ofEpochMilli(syncState.signedInSinceMillis),
+        signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),
         lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis),
         lastForcedReenqueue = Instant.ofEpochMilli(syncState.lastForcedReenqueueMillis),
     )

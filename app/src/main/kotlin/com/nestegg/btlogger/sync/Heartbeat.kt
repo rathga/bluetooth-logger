@@ -9,6 +9,7 @@ fun shouldEmitHeartbeat(nowMillis: Long, lastRecordMillis: Long?): Boolean =
     lastRecordMillis == null || (nowMillis - lastRecordMillis) >= HEARTBEAT_INTERVAL_MILLIS
 
 enum class DegradedReason {
+    DEVICE_STATE_UNREADABLE,
     MISSING_BLUETOOTH_CONNECT,
     NOT_BATTERY_EXEMPT,
     BLUETOOTH_OFF,
@@ -27,10 +28,18 @@ sealed interface HeartbeatStatus {
     }
 }
 
-fun heartbeatStatus(setup: SetupStatus, bluetoothAdapterEnabled: Boolean): HeartbeatStatus {
+/**
+ * [setup] is null when the live device-state read threw, which is itself a degraded verdict:
+ * the run is still alive, but nothing can be said about the capture preconditions.
+ */
+fun heartbeatStatus(setup: SetupStatus?, bluetoothAdapterEnabled: Boolean): HeartbeatStatus {
     val reasons = buildList {
-        if (SetupIssue.MISSING_BLUETOOTH_CONNECT in setup.issues) add(DegradedReason.MISSING_BLUETOOTH_CONNECT)
-        if (SetupIssue.NOT_BATTERY_EXEMPT in setup.issues) add(DegradedReason.NOT_BATTERY_EXEMPT)
+        if (setup == null) {
+            add(DegradedReason.DEVICE_STATE_UNREADABLE)
+        } else {
+            if (SetupIssue.MISSING_BLUETOOTH_CONNECT in setup.issues) add(DegradedReason.MISSING_BLUETOOTH_CONNECT)
+            if (SetupIssue.NOT_BATTERY_EXEMPT in setup.issues) add(DegradedReason.NOT_BATTERY_EXEMPT)
+        }
         if (!bluetoothAdapterEnabled) add(DegradedReason.BLUETOOTH_OFF)
     }
     return HeartbeatStatus.of(reasons)

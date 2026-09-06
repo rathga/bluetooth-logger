@@ -53,6 +53,33 @@ class HeartbeatTest {
         )
     }
 
+    @Test fun `status flags a device state that could not be read`() {
+        assertEquals(
+            HeartbeatStatus.Degraded(listOf(DegradedReason.DEVICE_STATE_UNREADABLE)),
+            heartbeatStatus(setup = null, bluetoothAdapterEnabled = true),
+        )
+    }
+
+    @Test fun `an unreadable device state still reports the adapter`() {
+        assertEquals(
+            HeartbeatStatus.Degraded(
+                listOf(DegradedReason.DEVICE_STATE_UNREADABLE, DegradedReason.BLUETOOTH_OFF),
+            ),
+            heartbeatStatus(setup = null, bluetoothAdapterEnabled = false),
+        )
+    }
+
+    @Test fun `renders the unreadable-device-state token`() {
+        assertEquals(
+            "DEGRADED:state-unreadable+bt-off",
+            CsvFormat.heartbeatStatusToken(
+                HeartbeatStatus.Degraded(
+                    listOf(DegradedReason.DEVICE_STATE_UNREADABLE, DegradedReason.BLUETOOTH_OFF),
+                ),
+            ),
+        )
+    }
+
     @Test fun `status lists every failing precondition in a fixed order`() {
         val setup = SetupStatus(bluetoothConnectGranted = false, batteryExempt = false)
         assertEquals(

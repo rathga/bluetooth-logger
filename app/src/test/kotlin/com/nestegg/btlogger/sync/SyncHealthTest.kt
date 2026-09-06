@@ -12,186 +12,93 @@ class SyncHealthTest {
     private val neverForced: Instant = Instant.EPOCH
     private val noSignInStamp: Instant = Instant.EPOCH
     private val neverSucceeded: Instant = Instant.EPOCH
+    private val signedOut: Instant? = null
     private val signedInLongAgo: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(10)
     private val signedInMomentsAgo: Instant = now.minusSeconds(1)
+    private val forcedOutsideTheGraceWindow: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(2)
+    private val longSinceSucceeded: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(3)
 
     @Test fun `fresh success is not stale`() {
-        assertFalse(
-            isSyncStale(
-                now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
-            ),
-        )
+        assertFalse(stale(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)))
     }
 
     @Test fun `exactly at the threshold is stale`() {
-        assertTrue(
-            isSyncStale(
-                now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD,
-            ),
-        )
+        assertTrue(stale(lastSuccess = now - SYNC_STALE_THRESHOLD))
     }
 
     @Test fun `well past the threshold is stale`() {
-        assertTrue(
-            isSyncStale(
-                now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-            ),
-        )
+        assertTrue(stale(lastSuccess = longSinceSucceeded))
     }
 
     @Test fun `an install signed in moments ago is not yet stale`() {
-        assertFalse(
-            isSyncStale(
-                now,
-                signedInSince = signedInMomentsAgo,
-                lastSuccess = neverSucceeded,
-            ),
-        )
+        assertFalse(stale(signedInSince = signedInMomentsAgo, lastSuccess = neverSucceeded))
     }
 
     @Test fun `an install signed in long ago that has never synced is stale`() {
-        assertTrue(
-            isSyncStale(
-                now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = neverSucceeded,
-            ),
-        )
+        assertTrue(stale(lastSuccess = neverSucceeded))
     }
 
     @Test fun `an install with no recorded sign-in and no success is stale`() {
-        assertTrue(
-            isSyncStale(
-                now,
-                signedInSince = noSignInStamp,
-                lastSuccess = neverSucceeded,
-            ),
-        )
+        assertTrue(stale(signedInSince = noSignInStamp, lastSuccess = neverSucceeded))
     }
 
     @Test fun `a sign-in newer than the last success restarts the clock`() {
-        assertFalse(
-            isSyncStale(
-                now,
-                signedInSince = signedInMomentsAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-            ),
-        )
+        assertFalse(stale(signedInSince = signedInMomentsAgo, lastSuccess = longSinceSucceeded))
+    }
+
+    @Test fun `a signed-out install is never stale`() {
+        assertFalse(stale(signedInSince = signedOut, lastSuccess = neverSucceeded))
     }
 
     @Test fun `a sync that is not stale needs no recovery`() {
         assertEquals(
             SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
-                lastForcedReenqueue = neverForced,
-            ),
+            recovery(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)),
         )
     }
 
     @Test fun `an install signed in moments ago needs no recovery`() {
         assertEquals(
             SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInMomentsAgo,
-                lastSuccess = neverSucceeded,
-                lastForcedReenqueue = neverForced,
-            ),
+            recovery(signedInSince = signedInMomentsAgo, lastSuccess = neverSucceeded),
         )
     }
 
     @Test fun `an install whose worker has never run is recovered once the sign-in is old enough`() {
-        assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = neverSucceeded,
-                lastForcedReenqueue = neverForced,
-            ),
-        )
+        assertEquals(SyncRecoveryAction.FORCE_REENQUEUE, recovery(lastSuccess = neverSucceeded))
     }
 
     @Test fun `stale with no prior force is forced silently`() {
-        assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = neverForced,
-            ),
-        )
+        assertEquals(SyncRecoveryAction.FORCE_REENQUEUE, recovery(lastSuccess = longSinceSucceeded))
     }
 
     @Test fun `an offline phone stale with no prior force is forced all the same`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = false,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = neverForced,
-            ),
+            recovery(networkValidated = false, lastSuccess = longSinceSucceeded),
         )
     }
 
     @Test fun `stale exactly at the six-hour boundary is forced silently`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD,
-                lastForcedReenqueue = neverForced,
-            ),
+            recovery(lastSuccess = now - SYNC_STALE_THRESHOLD),
         )
     }
 
     @Test fun `a force inside the grace window is left to take effect`() {
         assertEquals(
             SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = now,
-            ),
+            recovery(lastSuccess = longSinceSucceeded, lastForcedReenqueue = now),
         )
     }
 
     @Test fun `an offline phone inside the grace window is still left alone`() {
         assertEquals(
             SyncRecoveryAction.NONE,
-            syncRecoveryAction(
-                signedIn = true,
+            recovery(
                 networkValidated = false,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+                lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = now,
             ),
         )
@@ -200,13 +107,9 @@ class SyncHealthTest {
     @Test fun `a force whose grace window has expired escalates to a stall alert`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
+            recovery(
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
         )
     }
@@ -214,13 +117,33 @@ class SyncHealthTest {
     @Test fun `an offline phone past the grace window is told it is waiting for a connection`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE,
-            syncRecoveryAction(
-                signedIn = true,
+            recovery(
                 networkValidated = false,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `a stall the user is already looking at is forced without an alert`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE,
+            recovery(
+                appInForeground = true,
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `an offline stall the user is already looking at is forced without an alert`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE,
+            recovery(
+                networkValidated = false,
+                appInForeground = true,
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
         )
     }
@@ -228,13 +151,10 @@ class SyncHealthTest {
     @Test fun `a signed-out install clears any standing stall alert`() {
         assertEquals(
             SyncRecoveryAction.CLEAR_ALERT,
-            syncRecoveryAction(
-                signedIn = false,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
-                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(2),
+            recovery(
+                signedInSince = signedOut,
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
         )
     }
@@ -242,28 +162,41 @@ class SyncHealthTest {
     @Test fun `a signed-out install with a fresh sync still clears the alert`() {
         assertEquals(
             SyncRecoveryAction.CLEAR_ALERT,
-            syncRecoveryAction(
-                signedIn = false,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
+            recovery(
+                signedInSince = signedOut,
                 lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
-                lastForcedReenqueue = neverForced,
             ),
         )
     }
 
     @Test fun `a force older than the last success is silent again`() {
+        val lastSuccess = now - SYNC_STALE_THRESHOLD
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
-            syncRecoveryAction(
-                signedIn = true,
-                networkValidated = true,
-                now = now,
-                signedInSince = signedInLongAgo,
-                lastSuccess = now - SYNC_STALE_THRESHOLD,
-                lastForcedReenqueue = now - SYNC_STALE_THRESHOLD.multipliedBy(3),
+            recovery(
+                lastSuccess = lastSuccess,
+                lastForcedReenqueue = lastSuccess - SYNC_STALE_THRESHOLD,
             ),
         )
     }
+
+    private fun stale(
+        signedInSince: Instant? = signedInLongAgo,
+        lastSuccess: Instant,
+    ): Boolean = isSyncStale(now, signedInSince = signedInSince, lastSuccess = lastSuccess)
+
+    private fun recovery(
+        networkValidated: Boolean = true,
+        appInForeground: Boolean = false,
+        signedInSince: Instant? = signedInLongAgo,
+        lastSuccess: Instant,
+        lastForcedReenqueue: Instant = neverForced,
+    ): SyncRecoveryAction = syncRecoveryAction(
+        networkValidated = networkValidated,
+        appInForeground = appInForeground,
+        now = now,
+        signedInSince = signedInSince,
+        lastSuccess = lastSuccess,
+        lastForcedReenqueue = lastForcedReenqueue,
+    )
 }
