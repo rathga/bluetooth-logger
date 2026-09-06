@@ -77,15 +77,25 @@ object SetupNotifier {
         postSyncAlert(context, SyncAlert.OFFLINE)
     }
 
+    fun clearStalledSyncAlert(context: Context) {
+        cancelSyncAlert(context, SyncAlert.STALLED)
+    }
+
+    fun clearOfflineSyncAlert(context: Context) {
+        cancelSyncAlert(context, SyncAlert.OFFLINE)
+    }
+
     fun clearSyncAlert(context: Context) {
-        val manager = NotificationManagerCompat.from(context)
-        SyncAlert.entries.forEach { manager.cancel(it.id) }
+        SyncAlert.entries.forEach { cancelSyncAlert(context, it) }
     }
 
     private fun postSyncAlert(context: Context, alert: SyncAlert) {
-        val manager = NotificationManagerCompat.from(context)
-        SyncAlert.entries.filter { it != alert }.forEach { manager.cancel(it.id) }
+        SyncAlert.entries.filter { it != alert }.forEach { cancelSyncAlert(context, it) }
         post(context, alert.id, title = alert.title, text = alert.text)
+    }
+
+    private fun cancelSyncAlert(context: Context, alert: SyncAlert) {
+        NotificationManagerCompat.from(context).cancel(alert.id)
     }
 
     private fun post(context: Context, id: Int, title: String, text: String) {

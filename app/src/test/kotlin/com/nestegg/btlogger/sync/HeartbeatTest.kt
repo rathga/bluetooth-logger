@@ -56,16 +56,7 @@ class HeartbeatTest {
     @Test fun `status flags capture preconditions that could not be read`() {
         assertEquals(
             HeartbeatStatus.Degraded(listOf(DegradedReason.DEVICE_STATE_UNREADABLE)),
-            heartbeatStatus(CapturePreconditions.Unreadable, bluetoothAdapterEnabled = true),
-        )
-    }
-
-    @Test fun `unreadable capture preconditions still report the adapter`() {
-        assertEquals(
-            HeartbeatStatus.Degraded(
-                listOf(DegradedReason.DEVICE_STATE_UNREADABLE, DegradedReason.BLUETOOTH_OFF),
-            ),
-            heartbeatStatus(CapturePreconditions.Unreadable, bluetoothAdapterEnabled = false),
+            heartbeatStatus(CapturePreconditions.Unreadable),
         )
     }
 
@@ -114,7 +105,7 @@ class HeartbeatTest {
     }
 
     private fun statusOf(setup: SetupStatus, bluetoothAdapterEnabled: Boolean): HeartbeatStatus =
-        heartbeatStatus(CapturePreconditions.Measured(setup), bluetoothAdapterEnabled)
+        heartbeatStatus(CapturePreconditions.Measured(setup, bluetoothAdapterEnabled))
 
     private fun emittedAfter(elapsed: Long): Boolean {
         val now = 30L * HEARTBEAT_INTERVAL_MILLIS

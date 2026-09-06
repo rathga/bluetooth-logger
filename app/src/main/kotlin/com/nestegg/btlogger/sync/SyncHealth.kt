@@ -7,13 +7,9 @@ internal val SYNC_STALE_THRESHOLD: Duration = Duration.ofHours(6)
 
 private val FORCED_REENQUEUE_GRACE: Duration = Duration.ofHours(1)
 
-internal fun isSyncStale(
-    now: Instant,
-    signedInSince: Instant?,
-    lastSuccess: Instant,
-    threshold: Duration = SYNC_STALE_THRESHOLD,
-): Boolean =
-    signedInSince != null && Duration.between(maxOf(lastSuccess, signedInSince), now) >= threshold
+private fun isSyncStale(now: Instant, signedInSince: Instant?, lastSuccess: Instant): Boolean =
+    signedInSince != null &&
+        Duration.between(maxOf(lastSuccess, signedInSince), now) >= SYNC_STALE_THRESHOLD
 
 internal enum class NetworkStatus {
     VALIDATED,
@@ -51,21 +47,19 @@ internal enum class SyncRecoveryAction {
 }
 
 internal fun syncRecoveryAction(
-    network: NetworkStatus,
+    health: SyncHealth,
     visibility: AppVisibility,
     now: Instant,
     signedInSince: Instant?,
     lastSuccess: Instant,
     lastForcedReenqueue: Instant,
-): SyncRecoveryAction {
-    val health = syncHealth(network, now, signedInSince, lastSuccess)
-    return when {
-        signedInSince == null -> SyncRecoveryAction.CLEAR_ALERT
-        health == SyncHealth.HEALTHY -> SyncRecoveryAction.NONE
-        lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
-        Duration.between(lastForcedReenqueue, now) < FORCED_REENQUEUE_GRACE -> SyncRecoveryAction.NONE
-        visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
-        health == SyncHealth.STALLED -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED
-        else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE
-    }
+): SyncRecoveryAction = when {
+    signedInSince == null -> SyncRecoveryAction.CLEAR_ALERT
+    health == SyncHealth.HEALTHY -> SyncRecoveryAction.NONE
+    lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
+    now >= lastForcedReenqueue && now < lastForcedReenqueue + FORCED_REENQUEUE_GRACE ->
+        SyncRecoveryAction.NONE
+    visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
+    health == SyncHealth.STALLED -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED
+    else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE
 }

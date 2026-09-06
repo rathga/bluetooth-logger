@@ -14,9 +14,9 @@ Lightweight Android app that records every Bluetooth ACL connect/disconnect even
 - Statically-registered `BroadcastReceiver` on `BluetoothDevice.ACTION_ACL_CONNECTED` / `ACTION_ACL_DISCONNECTED`. Fires at link-layer level — earlier than A2DP, earlier than anything MileIQ sees. Disk write happens via `goAsync()` on a single-thread executor so the broadcast thread is never blocked.
 - Each event is appended to a JSONL file in app-private storage: `{utc_timestamp, event_type, device_name, device_mac}`.
 - A `WorkManager` periodic job (~hourly, carrying **no network constraint**, deliberately: `NetworkType.CONNECTED` was the prime suspect in a 484-hour silent stall, and an offline run simply retries with backoff) appends new rows to a per-device monthly CSV in Google Drive (`bluetooth-log-<device-tag>-YYYY-MM.csv`). Per-device filenames mean two phones syncing under the same Google account don't race on a single shared file.
-- Idempotency: per-month last-synced byte offset persisted in `SharedPreferences`. Manual "Sync now" button in the UI enqueues a one-off run of the worker for debugging; if a sync is already in flight the second run records the skip in the on-device journal without touching Drive and then ends — an hourly run asks WorkManager to retry it, a manual one does not, because the next hourly sync is its retry.
+- Idempotency: per-month last-synced byte offset persisted in `SharedPreferences`. Manual "Sync now" button in the UI enqueues a one-off run of the worker for debugging; if a sync is already in flight the second run records the skip — in the on-device journal and on the "Last sync attempt" line, without touching Drive — and then ends — an hourly run asks WorkManager to retry it, a manual one does not, because the next hourly sync is its retry.
 - A **setup-health check** runs when you open the app and on every sync: if the app lacks battery-optimisation exemption or the `BLUETOOTH_CONNECT` permission — the two conditions that silently stop capture — it shows an in-app banner with a one-tap fix and posts a notification, so a phone going dark surfaces even if you haven't opened the app for weeks.
-- A **sync watchdog** runs when you open the app and whenever a Bluetooth event arrives: if nothing has reached Drive successfully for over 6 hours — counted from the later of the last success and the moment you signed in — it cancels and re-registers the hourly job, which is what shakes loose a periodic worker the OS has quietly stopped dispatching. For as long as those 6 hours stand, the main screen carries a **"Sync may be stalled"** banner with a one-tap **Sync now**. The forced re-registration then gets an hour to take effect; if it hasn't by then a notification follows and the app keeps forcing. Which notification depends on whether the phone has a working internet connection at that moment: with one, **"Bluetooth Logger has stopped syncing"** — the real fault, and the one worth acting on; without one, **"Bluetooth Logger is waiting for a connection"**, which just means the events are safe on the phone and will go up when you're back online. The connection only picks the wording — the app re-registers the job either way. The next successful sync clears whichever notification is showing, and so does signing out.
+- A **sync watchdog** runs when you open the app and whenever a Bluetooth event arrives: if nothing has reached Drive successfully for over 6 hours — counted from the later of the last success and the moment you signed in — it cancels and re-registers the hourly job, which is what shakes loose a periodic worker the OS has quietly stopped dispatching. For as long as those 6 hours stand, the main screen carries a banner saying so. The forced re-registration then gets an hour to take effect; if it hasn't by then a notification follows and the app keeps forcing. Which banner and which notification depend on whether the phone has a working internet connection at that moment: with one, **"Sync has stopped"** on screen and **"Bluetooth Logger has stopped syncing"** in the tray — the real fault, and the one worth acting on, with a one-tap **Sync now**; without one, **"Waiting for a connection"** and **"Bluetooth Logger is waiting for a connection"**, which just means the events are safe on the phone and will go up when you're back online. The two surfaces read one verdict, so they cannot disagree, and the connection only picks the wording — the app re-registers the job either way. The next successful sync clears whichever notification is showing, and so does signing out.
 
 No foreground service required — events are push, not poll.
 
@@ -29,11 +29,12 @@ A gap in the CSV is otherwise ambiguous: "the car wasn't used" and "the logger w
 - **Verdict (`device_name`):**
   - `OK` — every on-device precondition for capture was healthy.
   - `DEGRADED:<tokens>` — one or more preconditions were failing, tokens joined by `+` in a fixed order:
+    - `state-unreadable` — the run could not read the device state at all, so the three below are unknown rather than healthy. It is the whole verdict when it appears: none of the others can be established.
     - `perm-missing` — `BLUETOOTH_CONNECT` not granted.
     - `no-doze-exemption` — the app is not exempt from battery optimisation (Doze).
     - `bt-off` — the Bluetooth adapter was disabled.
 
-    e.g. `DEGRADED:perm-missing+no-doze-exemption`.
+    e.g. `DEGRADED:perm-missing+no-doze-exemption`, or `DEGRADED:state-unreadable`.
 
 A heartbeat proves the logger was **alive**, never that capture **succeeded** — the documented Samsung deep-sleep case stops ACL delivery while WorkManager still runs, so an `OK` heartbeat can coincide with missed connections.
 
@@ -159,21 +160,29 @@ If sign-in returns `statusCode=10` (`DEVELOPER_ERROR`), the Cloud Console entry 
 app/src/main/
 ├── AndroidManifest.xml
 ├── kotlin/com/nestegg/btlogger/
-│   ├── BtLoggerApp.kt              # Application — schedules the worker, creates the notification channel
+│   ├── BtLoggerApp.kt              # Application — registers AppForeground, creates the
+│   │                               # notification channel, asks SyncScheduler to install the job
+│   ├── AppForeground.kt            # Started-activity count the watchdog reads
 │   ├── receiver/BluetoothEventReceiver.kt
 │   ├── setup/                      # SetupStatus (pure issue decision), SetupChecks
 │   │                               # (live-state reader), SetupNotifier
-│   ├── storage/                    # BtEvent + EventStore (JSONL append/read)
-│   ├── sync/                       # DriveClient, DriveSyncWorker, SyncState,
-│   │                               # CsvFormat, DeviceTag, Heartbeat
-│   └── ui/MainActivity.kt          # Sign-in, permissions, sync, recent events, setup-health banner
+│   ├── storage/                    # BtEvent + EventStore (JSONL append/read), JsonLine
+│   ├── sync/                       # DriveClient, DriveSyncWorker, SyncScheduler, SyncWatchdog,
+│   │                               # SyncHealth, SyncState, SyncAttempt, SyncJournal,
+│   │                               # SyncJournalPolicy, CsvFormat, DeviceTag, Heartbeat
+│   └── ui/MainActivity.kt          # Sign-in, permissions, sync, recent events,
+│                                   # setup-health and sync-health banners
 └── res/...
 
 app/src/test/kotlin/com/nestegg/btlogger/
 ├── setup/SetupStatusTest.kt
 ├── storage/EventStoreTest.kt
 ├── sync/DeviceTagTest.kt
-└── sync/HeartbeatTest.kt
+├── sync/HeartbeatTest.kt
+├── sync/SyncAttemptTest.kt
+├── sync/SyncHealthTest.kt
+├── sync/SyncJournalPolicyTest.kt
+└── sync/SyncJournalTest.kt
 ```
 
 ## Status

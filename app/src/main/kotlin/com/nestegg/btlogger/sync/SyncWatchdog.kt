@@ -9,28 +9,41 @@ import java.time.Instant
 
 private const val TAG = "SyncWatchdog"
 
-internal fun readSyncHealth(context: Context): SyncHealth {
+private class LiveSyncReading(
+    val now: Instant,
+    val signedInSince: Instant?,
+    val lastSuccess: Instant,
+    val lastForcedReenqueue: Instant,
+    val health: SyncHealth,
+)
+
+private fun readLiveSync(context: Context): LiveSyncReading {
     val syncState = SyncState.from(context)
-    return syncHealth(
-        network = networkStatus(context),
-        now = Instant.now(),
-        signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),
-        lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis),
+    val now = Instant.now()
+    val signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli)
+    val lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis)
+    val network =
+        if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED
+    return LiveSyncReading(
+        now = now,
+        signedInSince = signedInSince,
+        lastSuccess = lastSuccess,
+        lastForcedReenqueue = Instant.ofEpochMilli(syncState.lastForcedReenqueueMillis),
+        health = syncHealth(network, now, signedInSince, lastSuccess),
     )
 }
 
-private fun networkStatus(context: Context): NetworkStatus =
-    if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED
+internal fun readSyncHealth(context: Context): SyncHealth = readLiveSync(context).health
 
 internal fun recoverStalledSync(context: Context) {
-    val syncState = SyncState.from(context)
+    val live = readLiveSync(context)
     val action = syncRecoveryAction(
-        network = networkStatus(context),
+        health = live.health,
         visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
-        now = Instant.now(),
-        signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),
-        lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis),
-        lastForcedReenqueue = Instant.ofEpochMilli(syncState.lastForcedReenqueueMillis),
+        now = live.now,
+        signedInSince = live.signedInSince,
+        lastSuccess = live.lastSuccess,
+        lastForcedReenqueue = live.lastForcedReenqueue,
     )
 
     fun forceReenqueue() {
@@ -38,10 +51,21 @@ internal fun recoverStalledSync(context: Context) {
         Log.w(TAG, "Sync is stale — forced a fresh sync job registration ($action)")
     }
 
+    fun clearAlertsThisVerdictContradicts() {
+        when (live.health) {
+            SyncHealth.HEALTHY -> SetupNotifier.clearSyncAlert(context)
+            SyncHealth.STALLED -> SetupNotifier.clearOfflineSyncAlert(context)
+            SyncHealth.OFFLINE -> SetupNotifier.clearStalledSyncAlert(context)
+        }
+    }
+
     when (action) {
-        SyncRecoveryAction.NONE -> Unit
+        SyncRecoveryAction.NONE -> clearAlertsThisVerdictContradicts()
         SyncRecoveryAction.CLEAR_ALERT -> SetupNotifier.clearSyncAlert(context)
-        SyncRecoveryAction.FORCE_REENQUEUE -> forceReenqueue()
+        SyncRecoveryAction.FORCE_REENQUEUE -> {
+            forceReenqueue()
+            clearAlertsThisVerdictContradicts()
+        }
         SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED -> {
             forceReenqueue()
             SetupNotifier.notifySyncStalled(context)

@@ -1,8 +1,6 @@
 package com.nestegg.btlogger.sync
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
@@ -18,47 +16,42 @@ class SyncHealthTest {
     private val signedInMomentsAgo: Instant = now.minusSeconds(1)
     private val forcedOutsideTheGraceWindow: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(2)
     private val longSinceSucceeded: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(3)
+    private val justInsideTheThreshold: Instant = now - SYNC_STALE_THRESHOLD.minusMillis(1)
 
     @Test fun `sync goes stale six hours after the last success`() {
         assertEquals(Duration.ofHours(6), SYNC_STALE_THRESHOLD)
     }
 
-    @Test fun `fresh success is not stale`() {
-        assertFalse(stale(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)))
+    @Test fun `a sync that is not stale is healthy`() {
+        assertEquals(SyncHealth.HEALTHY, health(lastSuccess = justInsideTheThreshold))
     }
 
-    @Test fun `exactly at the threshold is stale`() {
-        assertTrue(stale(lastSuccess = now - SYNC_STALE_THRESHOLD))
+    @Test fun `exactly at the threshold the sync is no longer healthy`() {
+        assertEquals(SyncHealth.STALLED, health(lastSuccess = now - SYNC_STALE_THRESHOLD))
     }
 
-    @Test fun `well past the threshold is stale`() {
-        assertTrue(stale(lastSuccess = longSinceSucceeded))
+    @Test fun `an install signed in moments ago is healthy`() {
+        assertEquals(
+            SyncHealth.HEALTHY,
+            health(signedInSince = signedInMomentsAgo, lastSuccess = neverSucceeded),
+        )
     }
 
-    @Test fun `an install signed in moments ago is not yet stale`() {
-        assertFalse(stale(signedInSince = signedInMomentsAgo, lastSuccess = neverSucceeded))
+    @Test fun `an install signed in long ago that has never synced is unhealthy`() {
+        assertEquals(SyncHealth.STALLED, health(lastSuccess = neverSucceeded))
     }
 
-    @Test fun `an install signed in long ago that has never synced is stale`() {
-        assertTrue(stale(lastSuccess = neverSucceeded))
-    }
-
-    @Test fun `an install with no recorded sign-in and no success is stale`() {
-        assertTrue(stale(signedInSince = noSignInStamp, lastSuccess = neverSucceeded))
+    @Test fun `an install with no recorded sign-in and no success is unhealthy`() {
+        assertEquals(
+            SyncHealth.STALLED,
+            health(signedInSince = noSignInStamp, lastSuccess = neverSucceeded),
+        )
     }
 
     @Test fun `a sign-in newer than the last success restarts the clock`() {
-        assertFalse(stale(signedInSince = signedInMomentsAgo, lastSuccess = longSinceSucceeded))
-    }
-
-    @Test fun `a signed-out install is never stale`() {
-        assertFalse(stale(signedInSince = signedOut, lastSuccess = neverSucceeded))
-    }
-
-    @Test fun `a sync that is not stale is healthy`() {
         assertEquals(
             SyncHealth.HEALTHY,
-            health(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)),
+            health(signedInSince = signedInMomentsAgo, lastSuccess = longSinceSucceeded),
         )
     }
 
@@ -81,10 +74,7 @@ class SyncHealthTest {
     }
 
     @Test fun `a sync that is not stale needs no recovery`() {
-        assertEquals(
-            SyncRecoveryAction.NONE,
-            recovery(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)),
-        )
+        assertEquals(SyncRecoveryAction.NONE, recovery(lastSuccess = justInsideTheThreshold))
     }
 
     @Test fun `an install signed in moments ago needs no recovery`() {
@@ -192,9 +182,16 @@ class SyncHealthTest {
     @Test fun `a signed-out install with a fresh sync still clears the alert`() {
         assertEquals(
             SyncRecoveryAction.CLEAR_ALERT,
+            recovery(signedInSince = signedOut, lastSuccess = justInsideTheThreshold),
+        )
+    }
+
+    @Test fun `a force stamped in the future cannot silence the watchdog`() {
+        assertEquals(
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
             recovery(
-                signedInSince = signedOut,
-                lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1),
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = now + SYNC_STALE_THRESHOLD,
             ),
         )
     }
@@ -209,11 +206,6 @@ class SyncHealthTest {
             ),
         )
     }
-
-    private fun stale(
-        signedInSince: Instant? = signedInLongAgo,
-        lastSuccess: Instant,
-    ): Boolean = isSyncStale(now, signedInSince = signedInSince, lastSuccess = lastSuccess)
 
     private fun health(
         network: NetworkStatus = NetworkStatus.VALIDATED,
@@ -233,7 +225,7 @@ class SyncHealthTest {
         lastSuccess: Instant,
         lastForcedReenqueue: Instant = neverForced,
     ): SyncRecoveryAction = syncRecoveryAction(
-        network = network,
+        health = health(network = network, signedInSince = signedInSince, lastSuccess = lastSuccess),
         visibility = visibility,
         now = now,
         signedInSince = signedInSince,

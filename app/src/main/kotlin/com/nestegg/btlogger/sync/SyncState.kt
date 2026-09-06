@@ -29,7 +29,7 @@ class SyncState(private val prefs: SharedPreferences) {
         migrateLegacyOffsets()
     }
 
-    val accountName: String?
+    internal val accountName: String?
         get() = prefs.getString(KEY_ACCOUNT, null)
 
     internal val signedInSinceMillis: Long?
@@ -52,8 +52,9 @@ class SyncState(private val prefs: SharedPreferences) {
 
     internal fun recordSignIn(accountName: String, nowMillis: Long) {
         val previousAccount = prefs.getString(KEY_ACCOUNT, null)
+        if (previousAccount == accountName) return
         prefs.edit {
-            if (previousAccount != null && previousAccount != accountName) clearSyncHealth()
+            if (previousAccount != null) clearSyncHealth()
             putString(KEY_ACCOUNT, accountName)
             putLong(KEY_SIGNED_IN_SINCE, nowMillis)
         }
