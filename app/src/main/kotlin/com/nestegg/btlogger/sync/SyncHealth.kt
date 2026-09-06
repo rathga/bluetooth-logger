@@ -25,6 +25,23 @@ internal enum class AppVisibility {
     BACKGROUND,
 }
 
+internal enum class SyncHealth {
+    HEALTHY,
+    STALLED,
+    OFFLINE,
+}
+
+internal fun syncHealth(
+    network: NetworkStatus,
+    now: Instant,
+    signedInSince: Instant?,
+    lastSuccess: Instant,
+): SyncHealth = when {
+    !isSyncStale(now, signedInSince, lastSuccess) -> SyncHealth.HEALTHY
+    network == NetworkStatus.VALIDATED -> SyncHealth.STALLED
+    else -> SyncHealth.OFFLINE
+}
+
 internal enum class SyncRecoveryAction {
     NONE,
     CLEAR_ALERT,
@@ -40,12 +57,15 @@ internal fun syncRecoveryAction(
     signedInSince: Instant?,
     lastSuccess: Instant,
     lastForcedReenqueue: Instant,
-): SyncRecoveryAction = when {
-    signedInSince == null -> SyncRecoveryAction.CLEAR_ALERT
-    !isSyncStale(now, signedInSince, lastSuccess) -> SyncRecoveryAction.NONE
-    lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
-    Duration.between(lastForcedReenqueue, now) < FORCED_REENQUEUE_GRACE -> SyncRecoveryAction.NONE
-    visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
-    network == NetworkStatus.VALIDATED -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED
-    else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE
+): SyncRecoveryAction {
+    val health = syncHealth(network, now, signedInSince, lastSuccess)
+    return when {
+        signedInSince == null -> SyncRecoveryAction.CLEAR_ALERT
+        health == SyncHealth.HEALTHY -> SyncRecoveryAction.NONE
+        lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
+        Duration.between(lastForcedReenqueue, now) < FORCED_REENQUEUE_GRACE -> SyncRecoveryAction.NONE
+        visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
+        health == SyncHealth.STALLED -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED
+        else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE
+    }
 }

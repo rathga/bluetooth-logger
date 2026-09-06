@@ -49,13 +49,13 @@ import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
 import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD
+import com.nestegg.btlogger.sync.SyncHealth
 import com.nestegg.btlogger.sync.SyncOutcome
 import com.nestegg.btlogger.sync.SyncScheduler
 import com.nestegg.btlogger.sync.SyncState
-import com.nestegg.btlogger.sync.isSyncStale
+import com.nestegg.btlogger.sync.readSyncHealth
 import com.nestegg.btlogger.sync.recoverStalledSync
 import java.text.DateFormat
-import java.time.Instant
 import java.util.Date
 
 class MainActivity : ComponentActivity() {
@@ -194,18 +194,11 @@ private fun StatusScreen(
     val account = remember(refreshTick) { syncState.accountName }
     val lastAttempt = remember(refreshTick) { syncState.lastAttemptMillis }
     val lastAttemptOutcome = remember(refreshTick) { syncState.lastAttemptOutcome }
-    val lastSuccess = remember(refreshTick) { syncState.lastSuccessMillis }
-    val signedInSince = remember(refreshTick) { syncState.signedInSinceMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
-
-    val syncStale = isSyncStale(
-        now = Instant.now(),
-        signedInSince = signedInSince?.let(Instant::ofEpochMilli),
-        lastSuccess = Instant.ofEpochMilli(lastSuccess),
-    )
+    val syncHealth = remember(refreshTick) { readSyncHealth(context) }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(
@@ -213,7 +206,7 @@ private fun StatusScreen(
             onFixBattery = onFixBattery,
             onFixPermission = onGrantPermissions,
         )
-        SyncHealthBanner(stale = syncStale, onSyncNow = onSyncNow)
+        SyncHealthBanner(health = syncHealth, onSyncNow = onSyncNow)
         Text("Bluetooth Logger", style = MaterialTheme.typography.headlineMedium)
         Text("Logs ACL connect/disconnect events to a CSV in Google Drive.")
 
@@ -303,15 +296,21 @@ private fun SetupWarningBanner(
 }
 
 @Composable
-private fun SyncHealthBanner(stale: Boolean, onSyncNow: () -> Unit) {
-    if (!stale) return
-    WarningBanner("Sync may be stalled") {
-        Text(
-            "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours — " +
-                "captured events may not be backed up.",
-        )
-        Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
-            Text("Sync now")
+private fun SyncHealthBanner(health: SyncHealth, onSyncNow: () -> Unit) {
+    val noSyncFor = "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours"
+    when (health) {
+        SyncHealth.HEALTHY -> Unit
+        SyncHealth.STALLED -> WarningBanner("Sync has stopped") {
+            Text("$noSyncFor — captured events may not be backed up.")
+            Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
+                Text("Sync now")
+            }
+        }
+        SyncHealth.OFFLINE -> WarningBanner("Waiting for a connection") {
+            Text(
+                "$noSyncFor — captured events will reach Google Drive " +
+                    "once the phone is back online.",
+            )
         }
     }
 }

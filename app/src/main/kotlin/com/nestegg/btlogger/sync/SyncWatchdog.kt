@@ -9,10 +9,23 @@ import java.time.Instant
 
 private const val TAG = "SyncWatchdog"
 
+internal fun readSyncHealth(context: Context): SyncHealth {
+    val syncState = SyncState.from(context)
+    return syncHealth(
+        network = networkStatus(context),
+        now = Instant.now(),
+        signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),
+        lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis),
+    )
+}
+
+private fun networkStatus(context: Context): NetworkStatus =
+    if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED
+
 internal fun recoverStalledSync(context: Context) {
     val syncState = SyncState.from(context)
     val action = syncRecoveryAction(
-        network = if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED,
+        network = networkStatus(context),
         visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
         now = Instant.now(),
         signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),

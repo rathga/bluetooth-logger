@@ -55,6 +55,31 @@ class SyncHealthTest {
         assertFalse(stale(signedInSince = signedOut, lastSuccess = neverSucceeded))
     }
 
+    @Test fun `a sync that is not stale is healthy`() {
+        assertEquals(
+            SyncHealth.HEALTHY,
+            health(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)),
+        )
+    }
+
+    @Test fun `a signed-out install is healthy however old the last success`() {
+        assertEquals(
+            SyncHealth.HEALTHY,
+            health(signedInSince = signedOut, lastSuccess = neverSucceeded),
+        )
+    }
+
+    @Test fun `a stale sync with a validated network reads as stalled`() {
+        assertEquals(SyncHealth.STALLED, health(lastSuccess = longSinceSucceeded))
+    }
+
+    @Test fun `a stale sync with no validated network reads as offline`() {
+        assertEquals(
+            SyncHealth.OFFLINE,
+            health(network = NetworkStatus.UNVALIDATED, lastSuccess = longSinceSucceeded),
+        )
+    }
+
     @Test fun `a sync that is not stale needs no recovery`() {
         assertEquals(
             SyncRecoveryAction.NONE,
@@ -189,6 +214,17 @@ class SyncHealthTest {
         signedInSince: Instant? = signedInLongAgo,
         lastSuccess: Instant,
     ): Boolean = isSyncStale(now, signedInSince = signedInSince, lastSuccess = lastSuccess)
+
+    private fun health(
+        network: NetworkStatus = NetworkStatus.VALIDATED,
+        signedInSince: Instant? = signedInLongAgo,
+        lastSuccess: Instant,
+    ): SyncHealth = syncHealth(
+        network = network,
+        now = now,
+        signedInSince = signedInSince,
+        lastSuccess = lastSuccess,
+    )
 
     private fun recovery(
         network: NetworkStatus = NetworkStatus.VALIDATED,
