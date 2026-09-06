@@ -56,6 +56,19 @@ object SetupNotifier {
         NotificationManagerCompat.from(context).cancel(AUTH_NOTIFICATION_ID)
     }
 
+    private enum class SyncAlert(val id: Int, val title: String, val text: String) {
+        STALLED(
+            id = 3,
+            title = "Bluetooth Logger has stopped syncing",
+            text = "Tap to open the app and sync manually.",
+        ),
+        OFFLINE(
+            id = 4,
+            title = "Bluetooth Logger is waiting for a connection",
+            text = "Captured events will reach Google Drive once the phone is back online.",
+        ),
+    }
+
     fun notifySyncStalled(context: Context) {
         postSyncAlert(context, SyncAlert.STALLED)
     }
@@ -69,34 +82,10 @@ object SetupNotifier {
         SyncAlert.entries.forEach { manager.cancel(it.id) }
     }
 
-    /**
-     * One sync alert stands at a time, and the two carry different ids so that swapping one for
-     * the other is a fresh notification rather than a silent rewrite: `setOnlyAlertOnce` suppresses
-     * sound and heads-up when an id that is still showing is re-posted, which would let the benign
-     * "waiting for a connection" escalate to the actionable "stopped syncing" with no signal.
-     */
     private fun postSyncAlert(context: Context, alert: SyncAlert) {
         val manager = NotificationManagerCompat.from(context)
         SyncAlert.entries.filter { it != alert }.forEach { manager.cancel(it.id) }
         post(context, alert.id, title = alert.title, text = alert.text)
-    }
-
-    private enum class SyncAlert(val id: Int, val title: String, val text: String) {
-        /**
-         * Says nothing about forcing a sync: by the time this posts the watchdog has already
-         * forced one and stamped it, so the grace window makes a tap's own force a no-op. What
-         * the tap does reach is the in-app "Sync now" button.
-         */
-        STALLED(
-            id = 3,
-            title = "Bluetooth Logger has stopped syncing",
-            text = "Tap to open the app and sync manually.",
-        ),
-        OFFLINE(
-            id = 4,
-            title = "Bluetooth Logger is waiting for a connection",
-            text = "Captured events will reach Google Drive once the phone is back online.",
-        ),
     }
 
     private fun post(context: Context, id: Int, title: String, text: String) {

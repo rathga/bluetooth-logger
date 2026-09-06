@@ -56,13 +56,6 @@ internal object CsvFormat {
 
     fun heartbeatStatusToken(status: HeartbeatStatus): String = when (status) {
         HeartbeatStatus.Ok -> "OK"
-        is HeartbeatStatus.Degraded -> "DEGRADED:" + status.reasons.joinToString("+", transform = ::reasonToken)
-    }
-
-    private fun reasonToken(reason: DegradedReason): String = when (reason) {
-        DegradedReason.DEVICE_STATE_UNREADABLE -> "state-unreadable"
-        DegradedReason.MISSING_BLUETOOTH_CONNECT -> "perm-missing"
-        DegradedReason.NOT_BATTERY_EXEMPT -> "no-doze-exemption"
-        DegradedReason.BLUETOOTH_OFF -> "bt-off"
+        is HeartbeatStatus.Degraded -> "DEGRADED:" + status.reasons.joinToString("+") { it.wireName }
     }
 }

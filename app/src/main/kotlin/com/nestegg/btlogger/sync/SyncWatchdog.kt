@@ -12,8 +12,8 @@ private const val TAG = "SyncWatchdog"
 internal fun recoverStalledSync(context: Context) {
     val syncState = SyncState.from(context)
     val action = syncRecoveryAction(
-        networkValidated = isActiveNetworkValidated(context),
-        appInForeground = AppForeground.isForeground,
+        network = if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED,
+        visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
         now = Instant.now(),
         signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli),
         lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis),

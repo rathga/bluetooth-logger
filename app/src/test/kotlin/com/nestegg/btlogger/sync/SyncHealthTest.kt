@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Duration
 import java.time.Instant
 
 class SyncHealthTest {
@@ -17,6 +18,10 @@ class SyncHealthTest {
     private val signedInMomentsAgo: Instant = now.minusSeconds(1)
     private val forcedOutsideTheGraceWindow: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(2)
     private val longSinceSucceeded: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(3)
+
+    @Test fun `sync goes stale six hours after the last success`() {
+        assertEquals(Duration.ofHours(6), SYNC_STALE_THRESHOLD)
+    }
 
     @Test fun `fresh success is not stale`() {
         assertFalse(stale(lastSuccess = now - SYNC_STALE_THRESHOLD.minusMillis(1)))
@@ -75,7 +80,7 @@ class SyncHealthTest {
     @Test fun `an offline phone stale with no prior force is forced all the same`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
-            recovery(networkValidated = false, lastSuccess = longSinceSucceeded),
+            recovery(network = NetworkStatus.UNVALIDATED, lastSuccess = longSinceSucceeded),
         )
     }
 
@@ -97,7 +102,7 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.NONE,
             recovery(
-                networkValidated = false,
+                network = NetworkStatus.UNVALIDATED,
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = now,
             ),
@@ -118,7 +123,7 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE,
             recovery(
-                networkValidated = false,
+                network = NetworkStatus.UNVALIDATED,
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
@@ -129,7 +134,7 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             recovery(
-                appInForeground = true,
+                visibility = AppVisibility.FOREGROUND,
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
@@ -140,8 +145,8 @@ class SyncHealthTest {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE,
             recovery(
-                networkValidated = false,
-                appInForeground = true,
+                network = NetworkStatus.UNVALIDATED,
+                visibility = AppVisibility.FOREGROUND,
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = forcedOutsideTheGraceWindow,
             ),
@@ -186,14 +191,14 @@ class SyncHealthTest {
     ): Boolean = isSyncStale(now, signedInSince = signedInSince, lastSuccess = lastSuccess)
 
     private fun recovery(
-        networkValidated: Boolean = true,
-        appInForeground: Boolean = false,
+        network: NetworkStatus = NetworkStatus.VALIDATED,
+        visibility: AppVisibility = AppVisibility.BACKGROUND,
         signedInSince: Instant? = signedInLongAgo,
         lastSuccess: Instant,
         lastForcedReenqueue: Instant = neverForced,
     ): SyncRecoveryAction = syncRecoveryAction(
-        networkValidated = networkValidated,
-        appInForeground = appInForeground,
+        network = network,
+        visibility = visibility,
         now = now,
         signedInSince = signedInSince,
         lastSuccess = lastSuccess,

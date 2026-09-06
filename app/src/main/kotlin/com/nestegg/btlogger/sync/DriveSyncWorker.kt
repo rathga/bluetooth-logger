@@ -7,7 +7,6 @@ import androidx.work.WorkerParameters
 import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.nestegg.btlogger.setup.SetupNotifier
-import com.nestegg.btlogger.setup.SetupStatus
 import com.nestegg.btlogger.setup.isActiveNetworkValidated
 import com.nestegg.btlogger.setup.isBluetoothAdapterEnabled
 import com.nestegg.btlogger.setup.readSetupStatus
@@ -26,15 +25,12 @@ class DriveSyncWorker(
 
     private val journal: SyncJournal by lazy { SyncJournal(applicationContext) }
 
+    private data class UploadReport(val rowsUploaded: Int, val failure: Exception?)
+
     override suspend fun doWork(): Result {
         val trigger = SyncTrigger.fromWireName(inputData.getString(KEY_TRIGGER))
-        val deviceState = runCatching {
-            DeviceState(
-                setup = readSetupStatus(applicationContext),
-                networkValidated = isActiveNetworkValidated(applicationContext),
-            )
-        }
-        val measured = deviceState.getOrNull()
+        val setupReading = runCatching { readSetupStatus(applicationContext) }
+        val networkValidated = runCatching { isActiveNetworkValidated(applicationContext) }.getOrNull()
 
         fun attempt(outcome: SyncOutcome, rowsUploaded: Int, errorClass: String?) = SyncAttempt(
             utcTimestamp = System.currentTimeMillis(),
@@ -42,25 +38,28 @@ class DriveSyncWorker(
             outcome = outcome,
             rowsUploaded = rowsUploaded,
             errorClass = errorClass,
-            batteryExempt = measured?.setup?.batteryExempt,
-            networkValidated = measured?.networkValidated,
+            batteryExempt = setupReading.getOrNull()?.batteryExempt,
+            networkValidated = networkValidated,
         )
 
         fun runSync(): Result {
             val store = EventStore(applicationContext)
-            // Ahead of every early-out below: to the reconciler a missing heartbeat across a gap
-            // means the logger was dead, so a run that returns without one misreports the gap.
-            maybeWriteHeartbeat(store, measured?.setup)
+            maybeWriteHeartbeat(
+                store,
+                setupReading.fold({ CapturePreconditions.Measured(it) }, { CapturePreconditions.Unreadable }),
+            )
 
-            val setup = deviceState.getOrElse { e ->
-                Log.e(TAG, "Could not read device state; the run is journalled and abandoned", e)
+            val setup = setupReading.getOrElse { e ->
+                Log.e(TAG, "Could not read setup state; the run is journalled and abandoned", e)
                 return record(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
-            }.setup
+            }
 
             if (!syncInFlight.tryAcquire()) {
                 Log.i(TAG, "A sync is already in flight; journalling the skip")
-                journal.append(attempt(SyncOutcome.ALREADY_RUNNING, 0, null))
-                return retryOrFail(trigger.unattended)
+                return journalOnly(
+                    attempt(SyncOutcome.ALREADY_RUNNING, 0, null),
+                    retryOrFail(trigger.unattended),
+                )
             }
 
             try {
@@ -142,12 +141,13 @@ class DriveSyncWorker(
     private fun retryOrFail(unattended: Boolean): Result =
         if (unattended) Result.retry() else Result.failure()
 
-    private data class DeviceState(val setup: SetupStatus, val networkValidated: Boolean)
-
-    private data class UploadReport(val rowsUploaded: Int, val failure: Exception?)
-
     private fun record(attempt: SyncAttempt, result: Result): Result {
         persistAndUpload(attempt)
+        return result
+    }
+
+    private fun journalOnly(attempt: SyncAttempt, result: Result): Result {
+        journal.append(attempt)
         return result
     }
 
@@ -179,10 +179,10 @@ class DriveSyncWorker(
         DriveClient.forAccountName(applicationContext, accountName) to
             DeviceTag.forContext(applicationContext)
 
-    private fun maybeWriteHeartbeat(store: EventStore, setup: SetupStatus?) {
+    private fun maybeWriteHeartbeat(store: EventStore, preconditions: CapturePreconditions) {
         val now = System.currentTimeMillis()
         if (!shouldEmitHeartbeat(now, store.lastRecordMillis())) return
-        val status = heartbeatStatus(setup, isBluetoothAdapterEnabled(applicationContext))
+        val status = heartbeatStatus(preconditions, isBluetoothAdapterEnabled(applicationContext))
         val statusToken = CsvFormat.heartbeatStatusToken(status)
         store.append(BtEvent(now, EventType.HEARTBEAT, statusToken, ""))
         Log.i(TAG, "Wrote liveness heartbeat: $statusToken")

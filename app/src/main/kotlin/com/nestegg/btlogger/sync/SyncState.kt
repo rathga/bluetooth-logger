@@ -4,6 +4,25 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 
+internal class SyncAccount internal constructor(
+    val name: String,
+    private val prefs: SharedPreferences,
+) {
+
+    fun offsetFor(yearMonth: String): Long = prefs.getLong(offsetKey(yearMonth), 0L)
+
+    fun setOffsetFor(yearMonth: String, byteOffset: Long) {
+        prefs.edit { putLong(offsetKey(yearMonth), byteOffset) }
+    }
+
+    private fun offsetKey(yearMonth: String) = OFFSET_PREFIX + yearMonth + ACCOUNT_SEPARATOR + name
+
+    private companion object {
+        const val OFFSET_PREFIX = "offset_"
+        const val ACCOUNT_SEPARATOR = "|"
+    }
+}
+
 class SyncState(private val prefs: SharedPreferences) {
 
     init {
@@ -13,15 +32,9 @@ class SyncState(private val prefs: SharedPreferences) {
     val accountName: String?
         get() = prefs.getString(KEY_ACCOUNT, null)
 
-    /** Null when signed out, so staleness is never measured against a phantom sign-in. */
     internal val signedInSinceMillis: Long?
         get() = accountName?.let { prefs.getLong(KEY_SIGNED_IN_SINCE, 0L) }
 
-    /**
-     * The signed-in account together with the byte offsets it owns, or null when signed out.
-     * Reading the two as one value is what stops an offset being keyed to an account other
-     * than the one whose Drive files it counts.
-     */
     internal val signedInAccount: SyncAccount?
         get() = accountName?.let { SyncAccount(it, prefs) }
 
@@ -73,17 +86,6 @@ class SyncState(private val prefs: SharedPreferences) {
         prefs.edit { putLong(KEY_LAST_FORCED_REENQUEUE, nowMillis) }
     }
 
-    /**
-     * Re-keys the account-less `offset_YYYY-MM` entries written by the build before offsets were
-     * keyed by account, onto whichever account is signed in the first time this build reads the
-     * prefs — which is the account that earned them, because a sign-out cannot happen before the
-     * new build has run. Nothing is left for a later sign-in to adopt: an entry that cannot be
-     * attributed is dropped, so a second account starts from zero against its own Drive files
-     * rather than silently skipping the bytes a different account already uploaded.
-     *
-     * Key names are spelled out in full on purpose (DATA-01) — this records the format as it was,
-     * and must not follow the live one when that changes.
-     */
     private fun migrateLegacyOffsets() {
         val legacy = prefs.all.keys.filter { it.startsWith("offset_") && !it.contains("|") }
         if (legacy.isEmpty()) return
@@ -109,29 +111,5 @@ class SyncState(private val prefs: SharedPreferences) {
 
         fun from(context: Context): SyncState =
             SyncState(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))
-    }
-}
-
-/**
- * A signed-in account and the per-month byte offsets stored against it. Obtained only from
- * [SyncState.signedInAccount], so the name a key is built from is the one that was read, not one
- * a caller supplies.
- */
-internal class SyncAccount internal constructor(
-    val name: String,
-    private val prefs: SharedPreferences,
-) {
-
-    fun offsetFor(yearMonth: String): Long = prefs.getLong(offsetKey(yearMonth), 0L)
-
-    fun setOffsetFor(yearMonth: String, byteOffset: Long) {
-        prefs.edit { putLong(offsetKey(yearMonth), byteOffset) }
-    }
-
-    private fun offsetKey(yearMonth: String) = OFFSET_PREFIX + yearMonth + ACCOUNT_SEPARATOR + name
-
-    private companion object {
-        const val OFFSET_PREFIX = "offset_"
-        const val ACCOUNT_SEPARATOR = "|"
     }
 }
