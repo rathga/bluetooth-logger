@@ -2,6 +2,7 @@ package com.nestegg.btlogger.sync
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,8 +15,8 @@ class SyncAttemptTest {
         outcome: SyncOutcome = SyncOutcome.SUCCESS,
         rowsUploaded: Int = 0,
         errorClass: String? = null,
-        batteryExempt: Boolean = false,
-        networkValidated: Boolean = false,
+        batteryExempt: Boolean? = false,
+        networkValidated: Boolean? = false,
     ) = SyncAttempt(utcTimestamp, trigger, outcome, rowsUploaded, errorClass, batteryExempt, networkValidated)
 
     private fun attemptJsonWithOutcome(outcome: String): String =
@@ -44,6 +45,29 @@ class SyncAttemptTest {
         val parsed = parseSyncAttemptOrNull(attempt.toJsonLine())
         assertEquals(attempt, parsed)
         assertNull(parsed?.errorClass)
+    }
+
+    @Test fun `round-trips readings that were never taken`() {
+        val attempt = attempt(
+            outcome = SyncOutcome.ERROR,
+            errorClass = "SecurityException",
+            batteryExempt = null,
+            networkValidated = null,
+        )
+        val parsed = parseSyncAttemptOrNull(attempt.toJsonLine())
+        assertNotNull(parsed)
+        assertEquals(attempt, parsed)
+        assertNull(parsed?.batteryExempt)
+        assertNull(parsed?.networkValidated)
+    }
+
+    @Test fun `an unmeasured reading is not read back as false`() {
+        val line = attempt(batteryExempt = true, networkValidated = true).toJsonLine()
+            .replace("\"battery_exempt\":true", "\"battery_exempt\":null")
+        val parsed = parseSyncAttemptOrNull(line)
+        assertNotNull(parsed)
+        assertNull(parsed?.batteryExempt)
+        assertEquals(true, parsed?.networkValidated)
     }
 
     @Test fun `round-trips every outcome`() {
@@ -100,5 +124,10 @@ class SyncAttemptTest {
     @Test fun `only success and no-events count as clean`() {
         val clean = SyncOutcome.entries.filter { it.isClean }.toSet()
         assertEquals(setOf(SyncOutcome.SUCCESS, SyncOutcome.NO_EVENTS), clean)
+    }
+
+    @Test fun `only the periodic trigger runs unattended`() {
+        val unattended = SyncTrigger.entries.filter { it.unattended }.toSet()
+        assertEquals(setOf(SyncTrigger.PERIODIC), unattended)
     }
 }

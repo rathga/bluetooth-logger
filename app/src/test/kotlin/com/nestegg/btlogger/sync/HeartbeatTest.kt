@@ -8,32 +8,34 @@ import org.junit.Test
 
 class HeartbeatTest {
 
+    private val oneDayMillis: Long = 24L * 60 * 60 * 1000
+
     @Test fun `emits when there is no prior record`() {
         assertTrue(shouldEmitHeartbeat(nowMillis = 1_000_000, lastRecordMillis = null))
     }
 
-    @Test fun `does not emit before the interval has elapsed`() {
-        assertFalse(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS - 1))
+    @Test fun `does not emit before a day has elapsed`() {
+        assertFalse(emittedAfter(elapsed = oneDayMillis - 1))
     }
 
-    @Test fun `emits exactly at the interval boundary`() {
-        assertTrue(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS))
+    @Test fun `emits exactly at the one-day boundary`() {
+        assertTrue(emittedAfter(elapsed = oneDayMillis))
     }
 
-    @Test fun `emits well past the interval`() {
-        assertTrue(emittedAfter(elapsed = 3 * HEARTBEAT_INTERVAL_MILLIS))
+    @Test fun `emits well past a day`() {
+        assertTrue(emittedAfter(elapsed = 3 * oneDayMillis))
     }
 
     @Test fun `status is OK when all preconditions are healthy`() {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = true)
-        assertEquals(HeartbeatStatus.Ok, heartbeatStatus(setup, bluetoothAdapterEnabled = true))
+        assertEquals(HeartbeatStatus.Ok, statusOf(setup, bluetoothAdapterEnabled = true))
     }
 
     @Test fun `status flags a missing permission`() {
         val setup = SetupStatus(bluetoothConnectGranted = false, batteryExempt = true)
         assertEquals(
             HeartbeatStatus.Degraded(listOf(DegradedReason.MISSING_BLUETOOTH_CONNECT)),
-            heartbeatStatus(setup, bluetoothAdapterEnabled = true),
+            statusOf(setup, bluetoothAdapterEnabled = true),
         )
     }
 
@@ -41,7 +43,7 @@ class HeartbeatTest {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = false)
         assertEquals(
             HeartbeatStatus.Degraded(listOf(DegradedReason.NOT_BATTERY_EXEMPT)),
-            heartbeatStatus(setup, bluetoothAdapterEnabled = true),
+            statusOf(setup, bluetoothAdapterEnabled = true),
         )
     }
 
@@ -49,7 +51,14 @@ class HeartbeatTest {
         val setup = SetupStatus(bluetoothConnectGranted = true, batteryExempt = true)
         assertEquals(
             HeartbeatStatus.Degraded(listOf(DegradedReason.BLUETOOTH_OFF)),
-            heartbeatStatus(setup, bluetoothAdapterEnabled = false),
+            statusOf(setup, bluetoothAdapterEnabled = false),
+        )
+    }
+
+    @Test fun `status flags capture preconditions that could not be read`() {
+        assertEquals(
+            HeartbeatStatus.Degraded(listOf(DegradedReason.DEVICE_STATE_UNREADABLE)),
+            heartbeatStatus(CapturePreconditions.Unreadable),
         )
     }
 
@@ -63,7 +72,7 @@ class HeartbeatTest {
                     DegradedReason.BLUETOOTH_OFF,
                 ),
             ),
-            heartbeatStatus(setup, bluetoothAdapterEnabled = false),
+            statusOf(setup, bluetoothAdapterEnabled = false),
         )
     }
 
@@ -80,16 +89,11 @@ class HeartbeatTest {
 
     @Test fun `renders every degraded token joined in order`() {
         assertEquals(
-            "DEGRADED:perm-missing+no-doze-exemption+bt-off",
-            CsvFormat.heartbeatStatusToken(
-                HeartbeatStatus.Degraded(
-                    listOf(
-                        DegradedReason.MISSING_BLUETOOTH_CONNECT,
-                        DegradedReason.NOT_BATTERY_EXEMPT,
-                        DegradedReason.BLUETOOTH_OFF,
-                    ),
-                ),
-            ),
+            "these are the DEGRADED: token spellings the device_name column of " +
+                "bluetooth-log-<deviceTag>-YYYY-MM.csv carries; before updating them, ask whether a " +
+                "stored value changed and what the reconciler already has on disk",
+            "DEGRADED:state-unreadable+perm-missing+no-doze-exemption+bt-off",
+            CsvFormat.heartbeatStatusToken(HeartbeatStatus.Degraded(DegradedReason.entries)),
         )
     }
 
@@ -102,8 +106,11 @@ class HeartbeatTest {
         )
     }
 
+    private fun statusOf(setup: SetupStatus, bluetoothAdapterEnabled: Boolean): HeartbeatStatus =
+        heartbeatStatus(CapturePreconditions.Measured(setup.issues, bluetoothAdapterEnabled))
+
     private fun emittedAfter(elapsed: Long): Boolean {
-        val now = 30L * HEARTBEAT_INTERVAL_MILLIS
+        val now = 30L * oneDayMillis
         return shouldEmitHeartbeat(now, lastRecordMillis = now - elapsed)
     }
 }

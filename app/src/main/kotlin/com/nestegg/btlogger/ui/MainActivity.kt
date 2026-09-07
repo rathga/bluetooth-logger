@@ -37,25 +37,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
 import com.nestegg.btlogger.setup.SetupIssue
+import com.nestegg.btlogger.setup.SetupNotifier
 import com.nestegg.btlogger.setup.readSetupStatus
 import com.nestegg.btlogger.storage.BtEvent
 import com.nestegg.btlogger.storage.EventStore
 import com.nestegg.btlogger.storage.EventType
-import com.nestegg.btlogger.sync.DriveSyncWorker
-import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD_MILLIS
+import com.nestegg.btlogger.sync.SYNC_STALE_THRESHOLD
+import com.nestegg.btlogger.sync.SyncHealth
 import com.nestegg.btlogger.sync.SyncOutcome
+import com.nestegg.btlogger.sync.SyncScheduler
 import com.nestegg.btlogger.sync.SyncState
-import com.nestegg.btlogger.sync.SyncTrigger
-import com.nestegg.btlogger.sync.isSyncStale
+import com.nestegg.btlogger.sync.readSyncHealth
+import com.nestegg.btlogger.sync.recoverStalledSync
 import java.text.DateFormat
 import java.util.Date
 
@@ -90,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 Log.w(TAG, "Sign-in succeeded but no email on account")
                 return@registerForActivityResult
             }
-            SyncState.from(this).accountName = email
+            SyncState.from(this).recordSignIn(email)
             Log.i(TAG, "Signed in as $email")
             refreshTick.intValue++
         } catch (e: ApiException) {
@@ -119,6 +118,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        recoverStalledSync(this)
         refreshTick.intValue++
     }
 
@@ -134,18 +134,16 @@ class MainActivity : ComponentActivity() {
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
-                SyncState.from(this).accountName = null
+                SyncState.from(this).recordSignOut()
+                SetupNotifier.clearSyncAlerts(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
             }
     }
 
     private fun triggerSyncNow() {
-        val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-            .setInputData(workDataOf(DriveSyncWorker.KEY_TRIGGER to SyncTrigger.MANUAL.wireName))
-            .build()
-        WorkManager.getInstance(this).enqueue(request)
-        Log.i(TAG, "Manual sync enqueued")
+        SyncScheduler.syncNow(this)
+        Log.i(TAG, "Manual sync requested")
     }
 
     private fun requestNeededPermissions() {
@@ -196,14 +194,37 @@ private fun StatusScreen(
     val account = remember(refreshTick) { syncState.accountName }
     val lastAttempt = remember(refreshTick) { syncState.lastAttemptMillis }
     val lastAttemptOutcome = remember(refreshTick) { syncState.lastAttemptOutcome }
-    val lastSuccess = remember(refreshTick) { syncState.lastSuccessMillis }
     val eventCount = remember(refreshTick) { store.totalEvents() }
     val recent = remember(refreshTick) { store.recentConnections(RECENT_LIMIT) }
     val lastHeartbeat = remember(refreshTick) { store.lastHeartbeat() }
     val setup = remember(refreshTick) { readSetupStatus(context) }
+    val syncHealth = remember(refreshTick) { readSyncHealth(context) }
 
-    val syncStale = account != null && lastAttempt != 0L &&
-        isSyncStale(System.currentTimeMillis(), lastSuccess)
+    @Composable
+    fun SyncHealthBanner() {
+        val noSyncFor = "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours"
+        when (syncHealth) {
+            SyncHealth.HEALTHY -> Unit
+            SyncHealth.AUTH_EXPIRED -> WarningBanner("Google Drive sign-in needed") {
+                Text("$noSyncFor — the Drive sign-in has expired.")
+                Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in again")
+                }
+            }
+            SyncHealth.STALLED -> WarningBanner("Sync has stopped") {
+                Text("$noSyncFor — captured events may not be backed up.")
+                Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sync now")
+                }
+            }
+            SyncHealth.OFFLINE -> WarningBanner("Waiting for a connection") {
+                Text(
+                    "$noSyncFor — captured events will reach Google Drive " +
+                        "once the phone is back online.",
+                )
+            }
+        }
+    }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SetupWarningBanner(
@@ -211,7 +232,7 @@ private fun StatusScreen(
             onFixBattery = onFixBattery,
             onFixPermission = onGrantPermissions,
         )
-        SyncHealthBanner(stale = syncStale, onSyncNow = onSyncNow)
+        SyncHealthBanner()
         Text("Bluetooth Logger", style = MaterialTheme.typography.headlineMedium)
         Text("Logs ACL connect/disconnect events to a CSV in Google Drive.")
 
@@ -301,20 +322,6 @@ private fun SetupWarningBanner(
 }
 
 @Composable
-private fun SyncHealthBanner(stale: Boolean, onSyncNow: () -> Unit) {
-    if (!stale) return
-    WarningBanner("Sync may be stalled") {
-        Text(
-            "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours — " +
-                "captured events may not be backed up.",
-        )
-        Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
-            Text("Sync now")
-        }
-    }
-}
-
-@Composable
 private fun RecentEventRow(event: BtEvent) {
     val time = recentEventTimeFormatter.format(Date(event.utcTimestamp))
     val verb = if (event.eventType == EventType.CONNECTED) "connected" else "disconnected"
@@ -324,7 +331,7 @@ private fun RecentEventRow(event: BtEvent) {
 
 private const val RECENT_LIMIT = 10
 
-private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD_MILLIS / (60L * 60 * 1000)
+private val SYNC_STALE_THRESHOLD_HOURS = SYNC_STALE_THRESHOLD.toHours()
 
 private val recentEventTimeFormatter: DateFormat =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
