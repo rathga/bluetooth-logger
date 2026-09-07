@@ -86,6 +86,38 @@ class SyncHealthTest {
         )
     }
 
+    @Test fun `a stale sync whose last attempt failed on auth asks for a new sign-in`() {
+        assertEquals(
+            SyncHealth.AUTH_EXPIRED,
+            health(lastSuccess = longSinceSucceeded, lastOutcome = SyncOutcome.AUTH_FAILURE),
+        )
+    }
+
+    @Test fun `an offline phone whose last attempt failed on auth still asks for a new sign-in`() {
+        assertEquals(
+            SyncHealth.AUTH_EXPIRED,
+            health(
+                network = NetworkStatus.UNVALIDATED,
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+            ),
+        )
+    }
+
+    @Test fun `an auth failure that has not yet gone stale is healthy`() {
+        assertEquals(
+            SyncHealth.HEALTHY,
+            health(lastSuccess = justInsideTheThreshold, lastOutcome = SyncOutcome.AUTH_FAILURE),
+        )
+    }
+
+    @Test fun `a stale sync whose last attempt failed on the network is not an auth problem`() {
+        assertEquals(
+            SyncHealth.STALLED,
+            health(lastSuccess = longSinceSucceeded, lastOutcome = SyncOutcome.IO_RETRY),
+        )
+    }
+
     @Test fun `a sync that is not stale needs no recovery`() {
         assertEquals(SyncRecoveryAction.NONE, recovery(lastSuccess = justInsideTheThreshold))
     }
@@ -147,9 +179,9 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a force exactly at the end of the grace window escalates to a stall alert`() {
+    @Test fun `a force exactly at the end of the grace window escalates to an alert`() {
         assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             recovery(
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = forcedOutsideTheGraceWindow,
@@ -157,9 +189,9 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `an offline phone past the grace window is told it is waiting for a connection`() {
+    @Test fun `an offline phone past the grace window is alerted and forced all the same`() {
         assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE,
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             recovery(
                 network = NetworkStatus.UNVALIDATED,
                 lastSuccess = longSinceSucceeded,
@@ -211,7 +243,7 @@ class SyncHealthTest {
 
     @Test fun `a force stamped in the future cannot silence the watchdog`() {
         assertEquals(
-            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT,
             recovery(
                 lastSuccess = longSinceSucceeded,
                 lastForcedReenqueue = now + SYNC_STALE_THRESHOLD,
@@ -230,29 +262,96 @@ class SyncHealthTest {
         )
     }
 
+    @Test fun `a watchdog inside a sync run alerts instead of cancelling the job it runs under`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(runContext = SyncRunContext.INSIDE_SYNC_RUN, lastSuccess = longSinceSucceeded),
+        )
+    }
+
+    @Test fun `a watchdog inside a sync run past the grace window still only alerts`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `a watchdog inside a sync run leaves a pending force its grace window`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            recovery(
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedJustInsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `a watchdog inside a sync run stays silent while the app is open`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            recovery(
+                visibility = AppVisibility.FOREGROUND,
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                lastSuccess = longSinceSucceeded,
+            ),
+        )
+    }
+
+    @Test fun `a watchdog inside a sync run on a healthy sync does nothing`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            recovery(
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                lastSuccess = justInsideTheThreshold,
+            ),
+        )
+    }
+
+    @Test fun `a watchdog inside a sync run with no sign-in clears the alert`() {
+        assertEquals(
+            SyncRecoveryAction.CLEAR_ALERT,
+            recovery(
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                signedInSince = signedOut,
+                lastSuccess = longSinceSucceeded,
+            ),
+        )
+    }
+
     private fun health(
         network: NetworkStatus = NetworkStatus.VALIDATED,
         signedInSince: Instant? = signedInLongAgo,
         lastSuccess: Instant,
+        lastOutcome: SyncOutcome? = null,
     ): SyncHealth = syncHealth(
         network = network,
         now = now,
         signedInSince = signedInSince,
         lastSuccess = lastSuccess,
+        lastOutcome = lastOutcome,
     )
 
     private fun recovery(
         network: NetworkStatus = NetworkStatus.VALIDATED,
         visibility: AppVisibility = AppVisibility.BACKGROUND,
+        runContext: SyncRunContext = SyncRunContext.OUTSIDE_SYNC_RUN,
         signedInSince: Instant? = signedInLongAgo,
         lastSuccess: Instant,
+        lastOutcome: SyncOutcome? = null,
         lastForcedReenqueue: Instant = neverForced,
     ): SyncRecoveryAction = syncRecoveryAction(
         network = network,
         visibility = visibility,
+        runContext = runContext,
         now = now,
         signedInSince = signedInSince,
         lastSuccess = lastSuccess,
+        lastOutcome = lastOutcome,
         lastForcedReenqueue = lastForcedReenqueue,
     )
 }

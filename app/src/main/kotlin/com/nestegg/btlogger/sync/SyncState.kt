@@ -26,6 +26,20 @@ internal class SyncAccount(
 class SyncState(private val prefs: SharedPreferences) {
 
     init {
+        fun migrateLegacyOffsets() {
+            val legacy = prefs.all.keys.filter { it.startsWith("offset_") && !it.contains("|") }
+            if (legacy.isEmpty()) return
+            val owner = prefs.getString("account_name", null)
+            prefs.edit {
+                legacy.forEach { key ->
+                    if (owner != null) {
+                        putLong("offset_${key.removePrefix("offset_")}|$owner", prefs.getLong(key, 0L))
+                    }
+                    remove(key)
+                }
+            }
+        }
+
         migrateLegacyOffsets()
     }
 
@@ -50,13 +64,13 @@ class SyncState(private val prefs: SharedPreferences) {
     internal val lastForcedReenqueueMillis: Long
         get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
 
-    internal fun recordSignIn(accountName: String, nowMillis: Long) {
-        val previousAccount = prefs.getString(KEY_ACCOUNT, null)
+    internal fun recordSignIn(accountName: String) {
+        val previousAccount = this.accountName
         if (previousAccount == accountName) return
         prefs.edit {
             if (previousAccount != null) clearSyncHealth()
             putString(KEY_ACCOUNT, accountName)
-            putLong(KEY_SIGNED_IN_SINCE, nowMillis)
+            putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis())
         }
     }
 
@@ -83,22 +97,8 @@ class SyncState(private val prefs: SharedPreferences) {
         }
     }
 
-    internal fun recordForcedReenqueue(nowMillis: Long) {
-        prefs.edit { putLong(KEY_LAST_FORCED_REENQUEUE, nowMillis) }
-    }
-
-    private fun migrateLegacyOffsets() {
-        val legacy = prefs.all.keys.filter { it.startsWith("offset_") && !it.contains("|") }
-        if (legacy.isEmpty()) return
-        val owner = prefs.getString("account_name", null)
-        prefs.edit {
-            legacy.forEach { key ->
-                if (owner != null) {
-                    putLong("offset_${key.removePrefix("offset_")}|$owner", prefs.getLong(key, 0L))
-                }
-                remove(key)
-            }
-        }
+    internal fun recordForcedReenqueue() {
+        prefs.edit { putLong(KEY_LAST_FORCED_REENQUEUE, System.currentTimeMillis()) }
     }
 
     companion object {

@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 Log.w(TAG, "Sign-in succeeded but no email on account")
                 return@registerForActivityResult
             }
-            SyncState.from(this).recordSignIn(email, System.currentTimeMillis())
+            SyncState.from(this).recordSignIn(email)
             Log.i(TAG, "Signed in as $email")
             refreshTick.intValue++
         } catch (e: ApiException) {
@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
                 SyncState.from(this).recordSignOut()
-                SetupNotifier.clearSyncAlert(this)
+                SetupNotifier.clearSyncAlerts(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
             }
@@ -205,6 +205,12 @@ private fun StatusScreen(
         val noSyncFor = "No successful sync to Google Drive in over $SYNC_STALE_THRESHOLD_HOURS hours"
         when (syncHealth) {
             SyncHealth.HEALTHY -> Unit
+            SyncHealth.AUTH_EXPIRED -> WarningBanner("Google Drive sign-in needed") {
+                Text("$noSyncFor — the Drive sign-in has expired.")
+                Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in again")
+                }
+            }
             SyncHealth.STALLED -> WarningBanner("Sync has stopped") {
                 Text("$noSyncFor — captured events may not be backed up.")
                 Button(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {

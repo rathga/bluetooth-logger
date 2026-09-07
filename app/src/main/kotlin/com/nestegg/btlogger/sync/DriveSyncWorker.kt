@@ -45,18 +45,41 @@ class DriveSyncWorker(
 
         fun retryOrFail(): Result = if (trigger.unattended) Result.retry() else Result.failure()
 
-        fun maybeWriteHeartbeat() {
+        fun journalOnDevice(attempt: SyncAttempt) {
+            runCatching {
+                syncState.recordAttempt(attempt)
+                journal.append(attempt)
+            }.onFailure { Log.e(TAG, "Could not journal this run on device", it) }
+        }
+
+        fun abandonRun(step: String, e: Exception): Result {
+            Log.e(TAG, "$step failed; the run is journalled and abandoned", e)
+            journalOnDevice(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName))
+            return retryOrFail()
+        }
+
+        fun record(attempt: SyncAttempt, result: Result): Result {
+            journalOnDevice(attempt)
+            if (attempt.outcome.isClean) SetupNotifier.clearSyncAlerts(applicationContext)
+            return result
+        }
+
+        fun writeHeartbeatOrAbandon(): Result? = try {
             val now = System.currentTimeMillis()
-            if (!shouldEmitHeartbeat(now, store.lastRecordMillis())) return
-            val preconditions = runCatching {
-                CapturePreconditions.Measured(
-                    setup = setupReading.getOrThrow(),
-                    bluetoothAdapterEnabled = isBluetoothAdapterEnabled(applicationContext),
-                )
-            }.getOrDefault(CapturePreconditions.Unreadable)
-            val statusToken = CsvFormat.heartbeatStatusToken(heartbeatStatus(preconditions))
-            store.append(BtEvent(now, EventType.HEARTBEAT, statusToken, ""))
-            Log.i(TAG, "Wrote liveness heartbeat: $statusToken")
+            if (shouldEmitHeartbeat(now, store.lastRecordMillis())) {
+                val preconditions = runCatching {
+                    CapturePreconditions.Measured(
+                        setupIssues = setupReading.getOrThrow().issues,
+                        bluetoothAdapterEnabled = isBluetoothAdapterEnabled(applicationContext),
+                    )
+                }.getOrDefault(CapturePreconditions.Unreadable)
+                val statusToken = CsvFormat.heartbeatStatusToken(heartbeatStatus(preconditions))
+                store.append(BtEvent(now, EventType.HEARTBEAT, statusToken, ""))
+                Log.i(TAG, "Wrote liveness heartbeat: $statusToken")
+            }
+            null
+        } catch (e: Exception) {
+            abandonRun("Heartbeat write", e)
         }
 
         fun runSync(): Result {
@@ -131,63 +154,42 @@ class DriveSyncWorker(
         fun syncUnderPermit(): Result {
             if (!SYNC_IN_FLIGHT.tryAcquire()) {
                 Log.i(TAG, "A sync is already in flight; recording the skip")
-                recordOnDevice(attempt(SyncOutcome.ALREADY_RUNNING, 0, null))
+                journalOnDevice(attempt(SyncOutcome.ALREADY_RUNNING, 0, null))
                 return retryOrFail()
             }
+
+            fun uploadDiagnostics() {
+                runCatching {
+                    val accountName = syncState.accountName ?: return@runCatching
+                    val rows = journal.retainedAttempts().map(CsvFormat::diagnosticsRow)
+                    if (rows.isEmpty()) return@runCatching
+                    val (client, deviceTag) = driveClientAndTag(accountName)
+                    client.overwriteCsv(
+                        CsvFormat.diagnosticsFileName(deviceTag),
+                        CsvFormat.DIAGNOSTICS_HEADER,
+                        rows,
+                    )
+                }.onFailure { Log.w(TAG, "Diagnostics upload failed; will retry next sync", it) }
+            }
+
             return try {
                 runSync()
             } catch (e: Exception) {
                 Log.e(TAG, "Sync aborted before completion", e)
                 record(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
             } finally {
+                uploadDiagnostics()
                 SYNC_IN_FLIGHT.release()
             }
         }
 
         return try {
-            maybeWriteHeartbeat()
-            syncUnderPermit()
+            writeHeartbeatOrAbandon() ?: syncUnderPermit()
         } catch (e: Exception) {
-            // The heartbeat runs before the permit is taken, so another run may be mid-diagnostics
-            // upload right now: journal this run on device only and leave Drive to the permit
-            // holder. The run still reaches the journal, which is what the diagnostics CSV and the
-            // "Last sync attempt" line are read for.
-            Log.e(TAG, "Heartbeat write failed; the run is journalled and abandoned", e)
-            recordOnDevice(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName))
-            retryOrFail()
+            abandonRun("Sync run", e)
         } finally {
-            runCatching { recoverStalledSync(applicationContext) }
-                .onFailure { Log.e(TAG, "Sync watchdog failed", it) }
+            reportStalledSync(applicationContext)
         }
-    }
-
-    private fun recordOnDevice(attempt: SyncAttempt) {
-        syncState.recordAttempt(attempt)
-        journal.append(attempt)
-    }
-
-    private fun record(attempt: SyncAttempt, result: Result): Result {
-        fun uploadDiagnostics() {
-            val accountName = syncState.accountName ?: return
-            val rows = journal.retainedAttempts().map(CsvFormat::diagnosticsRow)
-            if (rows.isEmpty()) return
-            runCatching {
-                val (client, deviceTag) = driveClientAndTag(accountName)
-                client.overwriteCsv(
-                    CsvFormat.diagnosticsFileName(deviceTag),
-                    CsvFormat.DIAGNOSTICS_HEADER,
-                    rows,
-                )
-            }.onFailure { Log.w(TAG, "Diagnostics upload failed; will retry next sync", it) }
-        }
-
-        recordOnDevice(attempt)
-        if (attempt.outcome.isClean) {
-            SetupNotifier.clearAuthNeeded(applicationContext)
-            SetupNotifier.clearSyncAlert(applicationContext)
-        }
-        uploadDiagnostics()
-        return result
     }
 
     private fun driveClientAndTag(accountName: String): Pair<DriveClient, String> =

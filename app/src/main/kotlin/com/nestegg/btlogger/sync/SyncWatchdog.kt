@@ -13,6 +13,7 @@ private class LiveSyncReading(
     val now: Instant,
     val signedInSince: Instant?,
     val lastSuccess: Instant,
+    val lastOutcome: SyncOutcome?,
     val lastForcedReenqueue: Instant,
     val network: NetworkStatus,
     val health: SyncHealth,
@@ -23,12 +24,14 @@ private fun readLiveSync(context: Context): LiveSyncReading {
     val now = Instant.now()
     val signedInSince = syncState.signedInSinceMillis?.let(Instant::ofEpochMilli)
     val lastSuccess = Instant.ofEpochMilli(syncState.lastSuccessMillis)
+    val lastOutcome = syncState.lastAttemptOutcome
     val network =
         if (isActiveNetworkValidated(context)) NetworkStatus.VALIDATED else NetworkStatus.UNVALIDATED
     return LiveSyncReading(
         now = now,
         signedInSince = signedInSince,
         lastSuccess = lastSuccess,
+        lastOutcome = lastOutcome,
         lastForcedReenqueue = Instant.ofEpochMilli(syncState.lastForcedReenqueueMillis),
         network = network,
         health = syncHealth(
@@ -36,51 +39,51 @@ private fun readLiveSync(context: Context): LiveSyncReading {
             now = now,
             signedInSince = signedInSince,
             lastSuccess = lastSuccess,
+            lastOutcome = lastOutcome,
         ),
     )
 }
 
 internal fun readSyncHealth(context: Context): SyncHealth = readLiveSync(context).health
 
-internal fun recoverStalledSync(context: Context) {
-    val live = readLiveSync(context)
-    val action = syncRecoveryAction(
-        network = live.network,
-        visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
-        now = live.now,
-        signedInSince = live.signedInSince,
-        lastSuccess = live.lastSuccess,
-        lastForcedReenqueue = live.lastForcedReenqueue,
-    )
+internal fun recoverStalledSync(context: Context) =
+    runWatchdog(context, SyncRunContext.OUTSIDE_SYNC_RUN)
 
-    fun forceReenqueue() {
-        SyncScheduler.forceReenqueue(context)
-        Log.w(TAG, "Sync is stale — forced a fresh sync job registration ($action)")
-    }
+internal fun reportStalledSync(context: Context) =
+    runWatchdog(context, SyncRunContext.INSIDE_SYNC_RUN)
 
-    fun clearAlertsThisVerdictContradicts() {
-        val stillStandsBehind = when (live.health) {
-            SyncHealth.HEALTHY -> null
-            SyncHealth.STALLED -> SetupNotifier.SyncAlert.STALLED
-            SyncHealth.OFFLINE -> SetupNotifier.SyncAlert.OFFLINE
-        }
-        SetupNotifier.clearSyncAlertsOtherThan(context, keep = stillStandsBehind)
-    }
+private fun runWatchdog(context: Context, runContext: SyncRunContext) {
+    runCatching {
+        val live = readLiveSync(context)
+        val action = syncRecoveryAction(
+            network = live.network,
+            visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
+            runContext = runContext,
+            now = live.now,
+            signedInSince = live.signedInSince,
+            lastSuccess = live.lastSuccess,
+            lastOutcome = live.lastOutcome,
+            lastForcedReenqueue = live.lastForcedReenqueue,
+        )
 
-    when (action) {
-        SyncRecoveryAction.NONE -> clearAlertsThisVerdictContradicts()
-        SyncRecoveryAction.CLEAR_ALERT -> SetupNotifier.clearSyncAlert(context)
-        SyncRecoveryAction.FORCE_REENQUEUE -> {
-            forceReenqueue()
-            clearAlertsThisVerdictContradicts()
+        fun forceReenqueue() {
+            SyncScheduler.forceReenqueue(context)
+            Log.w(TAG, "Sync is stale — forced a fresh sync job registration ($action)")
         }
-        SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED -> {
-            forceReenqueue()
-            SetupNotifier.notifySyncAlert(context, SetupNotifier.SyncAlert.STALLED)
+
+        when (action) {
+            SyncRecoveryAction.NONE ->
+                SetupNotifier.retireSyncAlertsContradicting(context, live.health)
+            SyncRecoveryAction.CLEAR_ALERT -> SetupNotifier.clearSyncAlerts(context)
+            SyncRecoveryAction.ALERT -> SetupNotifier.notifySyncAlert(context, live.health)
+            SyncRecoveryAction.FORCE_REENQUEUE -> {
+                forceReenqueue()
+                SetupNotifier.retireSyncAlertsContradicting(context, live.health)
+            }
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT -> {
+                forceReenqueue()
+                SetupNotifier.notifySyncAlert(context, live.health)
+            }
         }
-        SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE -> {
-            forceReenqueue()
-            SetupNotifier.notifySyncAlert(context, SetupNotifier.SyncAlert.OFFLINE)
-        }
-    }
+    }.onFailure { Log.e(TAG, "Sync watchdog failed", it) }
 }

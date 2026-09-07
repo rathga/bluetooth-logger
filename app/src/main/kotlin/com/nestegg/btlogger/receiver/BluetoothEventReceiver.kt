@@ -56,8 +56,7 @@ class BluetoothEventReceiver : BroadcastReceiver() {
                     .onFailure { Log.e(TAG, "Failed to persist $event", it) }
                 runCatching { SetupNotifier.update(appContext, readSetupStatus(appContext)) }
                     .onFailure { Log.e(TAG, "Setup-health check failed", it) }
-                runCatching { recoverStalledSync(appContext) }
-                    .onFailure { Log.e(TAG, "Sync watchdog failed", it) }
+                recoverStalledSync(appContext)
             } finally {
                 pendingResult.finish()
             }

@@ -1,7 +1,6 @@
 package com.nestegg.btlogger.sync
 
 import com.nestegg.btlogger.setup.SetupIssue
-import com.nestegg.btlogger.setup.SetupStatus
 
 private const val HEARTBEAT_INTERVAL_MILLIS = 24L * 60 * 60 * 1000
 
@@ -18,7 +17,6 @@ internal enum class DegradedReason(val wireName: String) {
 internal sealed interface HeartbeatStatus {
     data object Ok : HeartbeatStatus
 
-    /** Always non-empty: build via [of], which collapses no-reasons to [Ok]. */
     data class Degraded(val reasons: List<DegradedReason>) : HeartbeatStatus
 
     companion object {
@@ -29,7 +27,7 @@ internal sealed interface HeartbeatStatus {
 
 internal sealed interface CapturePreconditions {
     data class Measured(
-        val setup: SetupStatus,
+        val setupIssues: List<SetupIssue>,
         val bluetoothAdapterEnabled: Boolean,
     ) : CapturePreconditions
 
@@ -42,7 +40,7 @@ internal fun heartbeatStatus(preconditions: CapturePreconditions): HeartbeatStat
             when (preconditions) {
                 CapturePreconditions.Unreadable -> add(DegradedReason.DEVICE_STATE_UNREADABLE)
                 is CapturePreconditions.Measured -> {
-                    val issues = preconditions.setup.issues
+                    val issues = preconditions.setupIssues
                     if (SetupIssue.MISSING_BLUETOOTH_CONNECT in issues) add(DegradedReason.MISSING_BLUETOOTH_CONNECT)
                     if (SetupIssue.NOT_BATTERY_EXEMPT in issues) add(DegradedReason.NOT_BATTERY_EXEMPT)
                     if (!preconditions.bluetoothAdapterEnabled) add(DegradedReason.BLUETOOTH_OFF)

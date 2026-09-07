@@ -107,7 +107,7 @@ class HeartbeatTest {
     }
 
     private fun statusOf(setup: SetupStatus, bluetoothAdapterEnabled: Boolean): HeartbeatStatus =
-        heartbeatStatus(CapturePreconditions.Measured(setup, bluetoothAdapterEnabled))
+        heartbeatStatus(CapturePreconditions.Measured(setup.issues, bluetoothAdapterEnabled))
 
     private fun emittedAfter(elapsed: Long): Boolean {
         val now = 30L * oneDayMillis
