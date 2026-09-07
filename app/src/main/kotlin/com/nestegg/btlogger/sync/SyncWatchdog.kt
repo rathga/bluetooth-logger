@@ -66,24 +66,14 @@ private fun runWatchdog(context: Context, runContext: SyncRunContext) {
             lastForcedReenqueue = live.lastForcedReenqueue,
         )
 
-        fun forceReenqueue() {
-            SyncScheduler.forceReenqueue(context)
-            Log.w(TAG, "Sync is stale — forced a fresh sync job registration ($action)")
-        }
+        SyncScheduler.reenqueueIfForced(context, action)
 
         when (action) {
-            SyncRecoveryAction.NONE ->
+            SyncRecoveryAction.NONE, SyncRecoveryAction.FORCE_REENQUEUE ->
                 SetupNotifier.retireSyncAlertsContradicting(context, live.health)
             SyncRecoveryAction.CLEAR_ALERT -> SetupNotifier.clearSyncAlerts(context)
-            SyncRecoveryAction.ALERT -> SetupNotifier.notifySyncAlert(context, live.health)
-            SyncRecoveryAction.FORCE_REENQUEUE -> {
-                forceReenqueue()
-                SetupNotifier.retireSyncAlertsContradicting(context, live.health)
-            }
-            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT -> {
-                forceReenqueue()
+            SyncRecoveryAction.ALERT, SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT ->
                 SetupNotifier.notifySyncAlert(context, live.health)
-            }
         }
     }.onFailure { Log.e(TAG, "Sync watchdog failed", it) }
 }

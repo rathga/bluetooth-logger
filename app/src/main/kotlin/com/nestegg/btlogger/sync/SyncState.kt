@@ -40,7 +40,13 @@ class SyncState(private val prefs: SharedPreferences) {
             }
         }
 
+        fun adoptSignInOfCarriedOverAccount() {
+            if (!prefs.contains(KEY_ACCOUNT) || prefs.contains(KEY_SIGNED_IN_SINCE)) return
+            prefs.edit { putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis()) }
+        }
+
         migrateLegacyOffsets()
+        adoptSignInOfCarriedOverAccount()
     }
 
     internal val accountName: String?

@@ -1,6 +1,7 @@
 package com.nestegg.btlogger.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -11,15 +12,27 @@ import androidx.work.workDataOf
 
 internal object SyncScheduler {
 
+    private const val TAG = "SyncScheduler"
     private const val PERIODIC_UNIQUE_NAME = "drive-sync"
     private const val MANUAL_UNIQUE_NAME = "drive-sync-manual"
 
     fun ensureScheduled(context: Context) =
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.UPDATE)
 
-    fun forceReenqueue(context: Context) {
-        enqueuePeriodic(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
-        SyncState.from(context).recordForcedReenqueue()
+    fun reenqueueIfForced(context: Context, action: SyncRecoveryAction) {
+        fun forceReenqueue() {
+            enqueuePeriodic(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
+            SyncState.from(context).recordForcedReenqueue()
+            Log.w(TAG, "Sync is stale — forced a fresh sync job registration ($action)")
+        }
+
+        when (action) {
+            SyncRecoveryAction.FORCE_REENQUEUE,
+            SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT -> forceReenqueue()
+            SyncRecoveryAction.NONE,
+            SyncRecoveryAction.CLEAR_ALERT,
+            SyncRecoveryAction.ALERT -> Unit
+        }
     }
 
     fun syncNow(context: Context) {
