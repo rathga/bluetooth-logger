@@ -7,13 +7,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import java.util.concurrent.TimeUnit
 
 internal object SyncScheduler {
 
     private const val PERIODIC_UNIQUE_NAME = "drive-sync"
     private const val MANUAL_UNIQUE_NAME = "drive-sync-manual"
-    private const val PERIOD_HOURS = 1L
 
     fun ensureScheduled(context: Context) =
         enqueuePeriodic(context, ExistingPeriodicWorkPolicy.UPDATE)
@@ -32,7 +30,7 @@ internal object SyncScheduler {
     }
 
     private fun enqueuePeriodic(context: Context, policy: ExistingPeriodicWorkPolicy) {
-        val request = PeriodicWorkRequestBuilder<DriveSyncWorker>(PERIOD_HOURS, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<DriveSyncWorker>(SYNC_PERIOD)
             .setInputData(triggerData(SyncTrigger.PERIODIC.wireName))
             .build()
         WorkManager.getInstance(context)

@@ -56,7 +56,7 @@ object SetupNotifier {
         NotificationManagerCompat.from(context).cancel(AUTH_NOTIFICATION_ID)
     }
 
-    private enum class SyncAlert(val id: Int, val title: String, val text: String) {
+    internal enum class SyncAlert(val id: Int, val title: String, val text: String) {
         STALLED(
             id = 3,
             title = "Bluetooth Logger has stopped syncing",
@@ -69,33 +69,25 @@ object SetupNotifier {
         ),
     }
 
-    fun notifySyncStalled(context: Context) {
-        postSyncAlert(context, SyncAlert.STALLED)
-    }
-
-    fun notifySyncOffline(context: Context) {
-        postSyncAlert(context, SyncAlert.OFFLINE)
-    }
-
-    fun clearStalledSyncAlert(context: Context) {
-        cancelSyncAlert(context, SyncAlert.STALLED)
-    }
-
-    fun clearOfflineSyncAlert(context: Context) {
-        cancelSyncAlert(context, SyncAlert.OFFLINE)
-    }
-
-    fun clearSyncAlert(context: Context) {
-        SyncAlert.entries.forEach { cancelSyncAlert(context, it) }
-    }
-
-    private fun postSyncAlert(context: Context, alert: SyncAlert) {
-        SyncAlert.entries.filter { it != alert }.forEach { cancelSyncAlert(context, it) }
+    /** Posts [alert] and retires every other sync alert, so the two can never stack. */
+    internal fun notifySyncAlert(context: Context, alert: SyncAlert) {
+        clearSyncAlertsOtherThan(context, keep = alert)
         post(context, alert.id, title = alert.title, text = alert.text)
     }
 
-    private fun cancelSyncAlert(context: Context, alert: SyncAlert) {
-        NotificationManagerCompat.from(context).cancel(alert.id)
+    /**
+     * Retires every sync alert other than [keep], which is left exactly as it is — neither posted
+     * nor cancelled. A caller names the one alert its verdict still stands behind; *which* alerts
+     * that verdict contradicts is worked out here, from the same exclusion [notifySyncAlert]
+     * applies, so no caller can dismiss the alert its own verdict wants showing.
+     */
+    internal fun clearSyncAlertsOtherThan(context: Context, keep: SyncAlert?) {
+        val manager = NotificationManagerCompat.from(context)
+        SyncAlert.entries.filter { it != keep }.forEach { manager.cancel(it.id) }
+    }
+
+    internal fun clearSyncAlert(context: Context) {
+        clearSyncAlertsOtherThan(context, keep = null)
     }
 
     private fun post(context: Context, id: Int, title: String, text: String) {

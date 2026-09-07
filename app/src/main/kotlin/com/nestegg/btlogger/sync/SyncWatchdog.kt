@@ -14,6 +14,7 @@ private class LiveSyncReading(
     val signedInSince: Instant?,
     val lastSuccess: Instant,
     val lastForcedReenqueue: Instant,
+    val network: NetworkStatus,
     val health: SyncHealth,
 )
 
@@ -29,7 +30,13 @@ private fun readLiveSync(context: Context): LiveSyncReading {
         signedInSince = signedInSince,
         lastSuccess = lastSuccess,
         lastForcedReenqueue = Instant.ofEpochMilli(syncState.lastForcedReenqueueMillis),
-        health = syncHealth(network, now, signedInSince, lastSuccess),
+        network = network,
+        health = syncHealth(
+            network = network,
+            now = now,
+            signedInSince = signedInSince,
+            lastSuccess = lastSuccess,
+        ),
     )
 }
 
@@ -38,7 +45,7 @@ internal fun readSyncHealth(context: Context): SyncHealth = readLiveSync(context
 internal fun recoverStalledSync(context: Context) {
     val live = readLiveSync(context)
     val action = syncRecoveryAction(
-        health = live.health,
+        network = live.network,
         visibility = if (AppForeground.isForeground) AppVisibility.FOREGROUND else AppVisibility.BACKGROUND,
         now = live.now,
         signedInSince = live.signedInSince,
@@ -52,11 +59,12 @@ internal fun recoverStalledSync(context: Context) {
     }
 
     fun clearAlertsThisVerdictContradicts() {
-        when (live.health) {
-            SyncHealth.HEALTHY -> SetupNotifier.clearSyncAlert(context)
-            SyncHealth.STALLED -> SetupNotifier.clearOfflineSyncAlert(context)
-            SyncHealth.OFFLINE -> SetupNotifier.clearStalledSyncAlert(context)
+        val stillStandsBehind = when (live.health) {
+            SyncHealth.HEALTHY -> null
+            SyncHealth.STALLED -> SetupNotifier.SyncAlert.STALLED
+            SyncHealth.OFFLINE -> SetupNotifier.SyncAlert.OFFLINE
         }
+        SetupNotifier.clearSyncAlertsOtherThan(context, keep = stillStandsBehind)
     }
 
     when (action) {
@@ -68,11 +76,11 @@ internal fun recoverStalledSync(context: Context) {
         }
         SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED -> {
             forceReenqueue()
-            SetupNotifier.notifySyncStalled(context)
+            SetupNotifier.notifySyncAlert(context, SetupNotifier.SyncAlert.STALLED)
         }
         SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_OFFLINE -> {
             forceReenqueue()
-            SetupNotifier.notifySyncOffline(context)
+            SetupNotifier.notifySyncAlert(context, SetupNotifier.SyncAlert.OFFLINE)
         }
     }
 }

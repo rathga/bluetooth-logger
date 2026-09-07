@@ -14,12 +14,18 @@ class SyncHealthTest {
     private val signedOut: Instant? = null
     private val signedInLongAgo: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(10)
     private val signedInMomentsAgo: Instant = now.minusSeconds(1)
-    private val forcedOutsideTheGraceWindow: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(2)
+    private val graceWindow: Duration = SYNC_PERIOD.multipliedBy(3)
+    private val forcedOutsideTheGraceWindow: Instant = now - graceWindow
+    private val forcedJustInsideTheGraceWindow: Instant = now - graceWindow.minusMillis(1)
     private val longSinceSucceeded: Instant = now - SYNC_STALE_THRESHOLD.multipliedBy(3)
     private val justInsideTheThreshold: Instant = now - SYNC_STALE_THRESHOLD.minusMillis(1)
 
     @Test fun `sync goes stale six hours after the last success`() {
         assertEquals(Duration.ofHours(6), SYNC_STALE_THRESHOLD)
+    }
+
+    @Test fun `the sync job is asked to run hourly`() {
+        assertEquals(Duration.ofHours(1), SYNC_PERIOD)
     }
 
     @Test fun `a sync that is not stale is healthy`() {
@@ -73,6 +79,13 @@ class SyncHealthTest {
         )
     }
 
+    @Test fun `a phone with no validated network that synced recently is still healthy`() {
+        assertEquals(
+            SyncHealth.HEALTHY,
+            health(network = NetworkStatus.UNVALIDATED, lastSuccess = justInsideTheThreshold),
+        )
+    }
+
     @Test fun `a sync that is not stale needs no recovery`() {
         assertEquals(SyncRecoveryAction.NONE, recovery(lastSuccess = justInsideTheThreshold))
     }
@@ -106,7 +119,17 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a force inside the grace window is left to take effect`() {
+    @Test fun `a force one millisecond inside the grace window is left to take effect`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            recovery(
+                lastSuccess = longSinceSucceeded,
+                lastForcedReenqueue = forcedJustInsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `a force that has only just happened is left to take effect`() {
         assertEquals(
             SyncRecoveryAction.NONE,
             recovery(lastSuccess = longSinceSucceeded, lastForcedReenqueue = now),
@@ -119,12 +142,12 @@ class SyncHealthTest {
             recovery(
                 network = NetworkStatus.UNVALIDATED,
                 lastSuccess = longSinceSucceeded,
-                lastForcedReenqueue = now,
+                lastForcedReenqueue = forcedJustInsideTheGraceWindow,
             ),
         )
     }
 
-    @Test fun `a force whose grace window has expired escalates to a stall alert`() {
+    @Test fun `a force exactly at the end of the grace window escalates to a stall alert`() {
         assertEquals(
             SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT_STALLED,
             recovery(
@@ -225,7 +248,7 @@ class SyncHealthTest {
         lastSuccess: Instant,
         lastForcedReenqueue: Instant = neverForced,
     ): SyncRecoveryAction = syncRecoveryAction(
-        health = health(network = network, signedInSince = signedInSince, lastSuccess = lastSuccess),
+        network = network,
         visibility = visibility,
         now = now,
         signedInSince = signedInSince,

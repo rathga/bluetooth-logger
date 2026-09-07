@@ -8,20 +8,22 @@ import org.junit.Test
 
 class HeartbeatTest {
 
+    private val oneDayMillis: Long = 24L * 60 * 60 * 1000
+
     @Test fun `emits when there is no prior record`() {
         assertTrue(shouldEmitHeartbeat(nowMillis = 1_000_000, lastRecordMillis = null))
     }
 
-    @Test fun `does not emit before the interval has elapsed`() {
-        assertFalse(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS - 1))
+    @Test fun `does not emit before a day has elapsed`() {
+        assertFalse(emittedAfter(elapsed = oneDayMillis - 1))
     }
 
-    @Test fun `emits exactly at the interval boundary`() {
-        assertTrue(emittedAfter(elapsed = HEARTBEAT_INTERVAL_MILLIS))
+    @Test fun `emits exactly at the one-day boundary`() {
+        assertTrue(emittedAfter(elapsed = oneDayMillis))
     }
 
-    @Test fun `emits well past the interval`() {
-        assertTrue(emittedAfter(elapsed = 3 * HEARTBEAT_INTERVAL_MILLIS))
+    @Test fun `emits well past a day`() {
+        assertTrue(emittedAfter(elapsed = 3 * oneDayMillis))
     }
 
     @Test fun `status is OK when all preconditions are healthy`() {
@@ -108,7 +110,7 @@ class HeartbeatTest {
         heartbeatStatus(CapturePreconditions.Measured(setup, bluetoothAdapterEnabled))
 
     private fun emittedAfter(elapsed: Long): Boolean {
-        val now = 30L * HEARTBEAT_INTERVAL_MILLIS
+        val now = 30L * oneDayMillis
         return shouldEmitHeartbeat(now, lastRecordMillis = now - elapsed)
     }
 }

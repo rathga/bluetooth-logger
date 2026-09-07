@@ -128,25 +128,40 @@ class DriveSyncWorker(
             }
         }
 
-        maybeWriteHeartbeat()
-
-        if (!syncInFlight.tryAcquire()) {
-            Log.i(TAG, "A sync is already in flight; recording the skip")
-            persist(attempt(SyncOutcome.ALREADY_RUNNING, 0, null))
-            return retryOrFail()
+        fun syncUnderPermit(): Result {
+            if (!SYNC_IN_FLIGHT.tryAcquire()) {
+                Log.i(TAG, "A sync is already in flight; recording the skip")
+                recordOnDevice(attempt(SyncOutcome.ALREADY_RUNNING, 0, null))
+                return retryOrFail()
+            }
+            return try {
+                runSync()
+            } catch (e: Exception) {
+                Log.e(TAG, "Sync aborted before completion", e)
+                record(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
+            } finally {
+                SYNC_IN_FLIGHT.release()
+            }
         }
 
         return try {
-            runSync()
+            maybeWriteHeartbeat()
+            syncUnderPermit()
         } catch (e: Exception) {
-            Log.e(TAG, "Sync aborted before completion", e)
-            record(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName), Result.failure())
+            // The heartbeat runs before the permit is taken, so another run may be mid-diagnostics
+            // upload right now: journal this run on device only and leave Drive to the permit
+            // holder. The run still reaches the journal, which is what the diagnostics CSV and the
+            // "Last sync attempt" line are read for.
+            Log.e(TAG, "Heartbeat write failed; the run is journalled and abandoned", e)
+            recordOnDevice(attempt(SyncOutcome.ERROR, 0, e.javaClass.simpleName))
+            retryOrFail()
         } finally {
-            syncInFlight.release()
+            runCatching { recoverStalledSync(applicationContext) }
+                .onFailure { Log.e(TAG, "Sync watchdog failed", it) }
         }
     }
 
-    private fun persist(attempt: SyncAttempt) {
+    private fun recordOnDevice(attempt: SyncAttempt) {
         syncState.recordAttempt(attempt)
         journal.append(attempt)
     }
@@ -166,7 +181,7 @@ class DriveSyncWorker(
             }.onFailure { Log.w(TAG, "Diagnostics upload failed; will retry next sync", it) }
         }
 
-        persist(attempt)
+        recordOnDevice(attempt)
         if (attempt.outcome.isClean) {
             SetupNotifier.clearAuthNeeded(applicationContext)
             SetupNotifier.clearSyncAlert(applicationContext)
@@ -182,6 +197,6 @@ class DriveSyncWorker(
     companion object {
         const val KEY_TRIGGER = "trigger"
         private const val TAG = "DriveSyncWorker"
-        private val syncInFlight = Semaphore(1)
+        private val SYNC_IN_FLIGHT = Semaphore(1)
     }
 }

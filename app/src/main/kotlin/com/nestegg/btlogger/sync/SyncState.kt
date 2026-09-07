@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 
-internal class SyncAccount internal constructor(
+internal class SyncAccount(
     val name: String,
     private val prefs: SharedPreferences,
 ) {
