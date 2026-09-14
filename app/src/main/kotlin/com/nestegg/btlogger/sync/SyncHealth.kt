@@ -38,13 +38,14 @@ internal fun syncHealth(
     lastSuccess: Instant,
     lastOutcome: SyncOutcome?,
 ): SyncHealth {
+    if (signedInSince == null) return SyncHealth.HEALTHY
+
     fun isSyncStale(): Boolean =
-        signedInSince != null &&
-            Duration.between(maxOf(lastSuccess, signedInSince), now) >= SYNC_STALE_THRESHOLD
+        Duration.between(maxOf(lastSuccess, signedInSince), now) >= SYNC_STALE_THRESHOLD
 
     return when {
-        !isSyncStale() -> SyncHealth.HEALTHY
         lastOutcome == SyncOutcome.AUTH_FAILURE -> SyncHealth.AUTH_EXPIRED
+        !isSyncStale() -> SyncHealth.HEALTHY
         network == NetworkStatus.VALIDATED -> SyncHealth.STALLED
         else -> SyncHealth.OFFLINE
     }

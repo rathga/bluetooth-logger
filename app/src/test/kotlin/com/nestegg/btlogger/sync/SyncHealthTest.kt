@@ -104,10 +104,21 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `an auth failure that has not yet gone stale is healthy`() {
+    @Test fun `an auth failure is the verdict before the sync has had time to go stale`() {
+        assertEquals(
+            SyncHealth.AUTH_EXPIRED,
+            health(lastSuccess = justInsideTheThreshold, lastOutcome = SyncOutcome.AUTH_FAILURE),
+        )
+    }
+
+    @Test fun `a signed-out install with an auth failure behind it is healthy`() {
         assertEquals(
             SyncHealth.HEALTHY,
-            health(lastSuccess = justInsideTheThreshold, lastOutcome = SyncOutcome.AUTH_FAILURE),
+            health(
+                signedInSince = signedOut,
+                lastSuccess = neverSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+            ),
         )
     }
 

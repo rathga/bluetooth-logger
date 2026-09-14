@@ -57,22 +57,22 @@ object SetupNotifier {
             NotificationManagerCompat.from(context).cancel(Alert.SETUP_HEALTH.id)
             return
         }
-        post(context, Alert.SETUP_HEALTH)
+        notify(context, Alert.SETUP_HEALTH)
     }
 
     internal fun notifyAuthNeeded(context: Context) {
-        showAlone(context, Alert.AUTH_NEEDED)
+        notifyAlone(context, Alert.AUTH_NEEDED)
     }
 
     internal fun notifySyncAlert(context: Context, health: SyncHealth) {
-        showAlone(context, alertFor(health) ?: return)
+        notifyAlone(context, alertFor(health) ?: return)
     }
 
-    internal fun retireSyncAlertsContradicting(context: Context, health: SyncHealth) {
+    internal fun cancelSyncAlertsContradicting(context: Context, health: SyncHealth) {
         cancelSyncAlertsOtherThan(context, keep = alertFor(health))
     }
 
-    internal fun clearSyncAlerts(context: Context) {
+    internal fun cancelSyncAlerts(context: Context) {
         cancelSyncAlertsOtherThan(context, keep = null)
     }
 
@@ -83,9 +83,9 @@ object SetupNotifier {
         SyncHealth.OFFLINE -> Alert.SYNC_OFFLINE
     }
 
-    private fun showAlone(context: Context, alert: Alert) {
+    private fun notifyAlone(context: Context, alert: Alert) {
         cancelSyncAlertsOtherThan(context, keep = alert)
-        post(context, alert)
+        notify(context, alert)
     }
 
     private fun cancelSyncAlertsOtherThan(context: Context, keep: Alert?) {
@@ -93,7 +93,7 @@ object SetupNotifier {
         SYNC_ALERTS.filter { it != keep }.forEach { manager.cancel(it.id) }
     }
 
-    private fun post(context: Context, alert: Alert) {
+    private fun notify(context: Context, alert: Alert) {
         val manager = NotificationManagerCompat.from(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)

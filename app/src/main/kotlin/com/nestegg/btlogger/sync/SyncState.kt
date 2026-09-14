@@ -41,8 +41,8 @@ class SyncState(private val prefs: SharedPreferences) {
         }
 
         fun adoptSignInOfCarriedOverAccount() {
-            if (!prefs.contains(KEY_ACCOUNT) || prefs.contains(KEY_SIGNED_IN_SINCE)) return
-            prefs.edit { putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis()) }
+            if (!prefs.contains("account_name") || prefs.contains("signed_in_since_millis")) return
+            prefs.edit { putLong("signed_in_since_millis", System.currentTimeMillis()) }
         }
 
         migrateLegacyOffsets()
@@ -53,7 +53,7 @@ class SyncState(private val prefs: SharedPreferences) {
         get() = prefs.getString(KEY_ACCOUNT, null)
 
     internal val signedInSinceMillis: Long?
-        get() = accountName?.let { prefs.getLong(KEY_SIGNED_IN_SINCE, 0L) }
+        get() = prefs.getLong(KEY_SIGNED_IN_SINCE, NO_STAMP).takeIf { it != NO_STAMP }
 
     internal val signedInAccount: SyncAccount?
         get() = accountName?.let { SyncAccount(it, prefs) }
@@ -71,10 +71,9 @@ class SyncState(private val prefs: SharedPreferences) {
         get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
 
     internal fun recordSignIn(accountName: String) {
-        val previousAccount = this.accountName
-        if (previousAccount == accountName) return
+        if (this.accountName == accountName) return
         prefs.edit {
-            if (previousAccount != null) clearSyncHealth()
+            clearSyncHealth()
             putString(KEY_ACCOUNT, accountName)
             putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis())
         }
@@ -108,6 +107,7 @@ class SyncState(private val prefs: SharedPreferences) {
     }
 
     companion object {
+        private const val NO_STAMP = 0L
         private const val PREFS_NAME = "bt_logger_sync"
         private const val KEY_ACCOUNT = "account_name"
         private const val KEY_SIGNED_IN_SINCE = "signed_in_since_millis"

@@ -60,7 +60,7 @@ class DriveSyncWorker(
 
         fun record(attempt: SyncAttempt, result: Result): Result {
             journalOnDevice(attempt)
-            if (attempt.outcome.isClean) SetupNotifier.clearSyncAlerts(applicationContext)
+            if (attempt.outcome.isClean) SetupNotifier.cancelSyncAlerts(applicationContext)
             return result
         }
 

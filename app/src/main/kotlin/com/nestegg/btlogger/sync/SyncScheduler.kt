@@ -40,14 +40,16 @@ internal object SyncScheduler {
         val pending = manager.getWorkInfosForUniqueWork(MANUAL_UNIQUE_NAME)
 
         fun replaceAnyUndispatchedRequest() {
-            val undispatched = pending.get().any {
-                !it.state.isFinished && it.state != WorkInfo.State.RUNNING
-            }
-            if (undispatched) manager.cancelUniqueWork(MANUAL_UNIQUE_NAME)
-            val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-                .setInputData(triggerData(SyncTrigger.MANUAL.wireName))
-                .build()
-            manager.enqueueUniqueWork(MANUAL_UNIQUE_NAME, ExistingWorkPolicy.KEEP, request)
+            runCatching {
+                val undispatched = pending.get().any {
+                    !it.state.isFinished && it.state != WorkInfo.State.RUNNING
+                }
+                if (undispatched) manager.cancelUniqueWork(MANUAL_UNIQUE_NAME)
+                val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
+                    .setInputData(triggerData(SyncTrigger.MANUAL.wireName))
+                    .build()
+                manager.enqueueUniqueWork(MANUAL_UNIQUE_NAME, ExistingWorkPolicy.KEEP, request)
+            }.onFailure { Log.e(TAG, "Manual sync could not be enqueued", it) }
         }
 
         pending.addListener({ replaceAnyUndispatchedRequest() }, context.mainExecutor)

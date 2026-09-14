@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                 return@registerForActivityResult
             }
             SyncState.from(this).recordSignIn(email)
+            SyncScheduler.syncNow(this)
             Log.i(TAG, "Signed in as $email")
             refreshTick.intValue++
         } catch (e: ApiException) {
@@ -135,7 +136,7 @@ class MainActivity : ComponentActivity() {
         GoogleSignIn.getClient(this, options).signOut()
             .addOnCompleteListener {
                 SyncState.from(this).recordSignOut()
-                SetupNotifier.clearSyncAlerts(this)
+                SetupNotifier.cancelSyncAlerts(this)
                 Log.i(TAG, "Signed out")
                 refreshTick.intValue++
             }
