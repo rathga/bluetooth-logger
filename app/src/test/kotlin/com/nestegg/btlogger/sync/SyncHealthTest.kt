@@ -234,9 +234,78 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a signed-out install clears any standing stall alert`() {
+    @Test fun `an expired sign-in is never repaired by a forced re-enqueue`() {
         assertEquals(
-            SyncRecoveryAction.CLEAR_ALERT,
+            SyncRecoveryAction.ALERT,
+            recovery(lastSuccess = longSinceSucceeded, lastOutcome = SyncOutcome.AUTH_FAILURE),
+        )
+    }
+
+    @Test fun `an auth failure before the sync has gone stale asks for a sign-in`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(lastSuccess = justInsideTheThreshold, lastOutcome = SyncOutcome.AUTH_FAILURE),
+        )
+    }
+
+    @Test fun `an auth failure the user is already looking at is left to the banner`() {
+        assertEquals(
+            SyncRecoveryAction.NONE,
+            recovery(
+                visibility = AppVisibility.FOREGROUND,
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+            ),
+        )
+    }
+
+    @Test fun `a pending force does not silence the sign-in prompt`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+                lastForcedReenqueue = forcedJustInsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `an auth failure past the grace window is not escalated to a stall`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+                lastForcedReenqueue = forcedOutsideTheGraceWindow,
+            ),
+        )
+    }
+
+    @Test fun `a sync run that ends on an auth failure asks for a sign-in`() {
+        assertEquals(
+            SyncRecoveryAction.ALERT,
+            recovery(
+                runContext = SyncRunContext.INSIDE_SYNC_RUN,
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+            ),
+        )
+    }
+
+    @Test fun `a signed-out install with an auth failure behind it cancels the alert`() {
+        assertEquals(
+            SyncRecoveryAction.CANCEL_ALERT,
+            recovery(
+                signedInSince = signedOut,
+                lastSuccess = longSinceSucceeded,
+                lastOutcome = SyncOutcome.AUTH_FAILURE,
+            ),
+        )
+    }
+
+    @Test fun `a signed-out install cancels any standing stall alert`() {
+        assertEquals(
+            SyncRecoveryAction.CANCEL_ALERT,
             recovery(
                 signedInSince = signedOut,
                 lastSuccess = longSinceSucceeded,
@@ -245,9 +314,9 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a signed-out install with a fresh sync still clears the alert`() {
+    @Test fun `a signed-out install with a fresh sync still cancels the alert`() {
         assertEquals(
-            SyncRecoveryAction.CLEAR_ALERT,
+            SyncRecoveryAction.CANCEL_ALERT,
             recovery(signedInSince = signedOut, lastSuccess = justInsideTheThreshold),
         )
     }
@@ -323,9 +392,9 @@ class SyncHealthTest {
         )
     }
 
-    @Test fun `a watchdog inside a sync run with no sign-in clears the alert`() {
+    @Test fun `a watchdog inside a sync run with no sign-in cancels the alert`() {
         assertEquals(
-            SyncRecoveryAction.CLEAR_ALERT,
+            SyncRecoveryAction.CANCEL_ALERT,
             recovery(
                 runContext = SyncRunContext.INSIDE_SYNC_RUN,
                 signedInSince = signedOut,

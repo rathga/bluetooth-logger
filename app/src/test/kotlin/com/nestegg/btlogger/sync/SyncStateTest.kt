@@ -115,6 +115,27 @@ class SyncStateTest {
         assertEquals(0L, state.lastAttemptMillis)
         assertNull(state.lastAttemptOutcome)
         assertEquals(0L, state.lastSuccessMillis)
+        assertEquals(0L, state.lastForcedReenqueueMillis)
+    }
+
+    @Test fun `re-signing in the account already recorded drops the auth failure it answers`() {
+        val prefs = FakeSharedPreferences(
+            mutableMapOf(
+                "account_name" to "driver@example.com",
+                "signed_in_since_millis" to 1_000L,
+                "last_attempt_millis" to 5_000L,
+                "last_attempt_outcome" to "auth-failure",
+                "last_success_millis" to 4_000L,
+            ),
+        )
+        val state = SyncState(prefs)
+
+        state.recordSignIn("driver@example.com")
+
+        assertNull(state.lastAttemptOutcome)
+        assertEquals(0L, state.lastAttemptMillis)
+        assertEquals(1_000L, state.signedInSinceMillis)
+        assertEquals(4_000L, state.lastSuccessMillis)
     }
 
     @Test fun `a signed-out install stamps nothing`() {

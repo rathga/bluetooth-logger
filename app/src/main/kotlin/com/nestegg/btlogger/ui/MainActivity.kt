@@ -207,7 +207,7 @@ private fun StatusScreen(
         when (syncHealth) {
             SyncHealth.HEALTHY -> Unit
             SyncHealth.AUTH_EXPIRED -> WarningBanner("Google Drive sign-in needed") {
-                Text("$noSyncFor — the Drive sign-in has expired.")
+                Text("The Drive sign-in has expired — syncing stops until you sign in again.")
                 Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) {
                     Text("Sign in again")
                 }

@@ -71,11 +71,15 @@ class SyncState(private val prefs: SharedPreferences) {
         get() = prefs.getLong(KEY_LAST_FORCED_REENQUEUE, 0L)
 
     internal fun recordSignIn(accountName: String) {
-        if (this.accountName == accountName) return
+        val newAccount = this.accountName != accountName
         prefs.edit {
-            clearSyncHealth()
-            putString(KEY_ACCOUNT, accountName)
-            putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis())
+            if (newAccount) {
+                forgetSyncHistory()
+                putString(KEY_ACCOUNT, accountName)
+                putLong(KEY_SIGNED_IN_SINCE, System.currentTimeMillis())
+            } else {
+                forgetLastAttempt()
+            }
         }
     }
 
@@ -83,13 +87,17 @@ class SyncState(private val prefs: SharedPreferences) {
         prefs.edit {
             remove(KEY_ACCOUNT)
             remove(KEY_SIGNED_IN_SINCE)
-            clearSyncHealth()
+            forgetSyncHistory()
         }
     }
 
-    private fun SharedPreferences.Editor.clearSyncHealth() {
+    private fun SharedPreferences.Editor.forgetLastAttempt() {
         remove(KEY_LAST_ATTEMPT)
         remove(KEY_LAST_OUTCOME)
+    }
+
+    private fun SharedPreferences.Editor.forgetSyncHistory() {
+        forgetLastAttempt()
         remove(KEY_LAST_SUCCESS)
         remove(KEY_LAST_FORCED_REENQUEUE)
     }

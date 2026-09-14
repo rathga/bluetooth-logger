@@ -53,7 +53,7 @@ internal fun syncHealth(
 
 internal enum class SyncRecoveryAction {
     NONE,
-    CLEAR_ALERT,
+    CANCEL_ALERT,
     ALERT,
     FORCE_REENQUEUE,
     FORCE_REENQUEUE_AND_ALERT,
@@ -77,14 +77,17 @@ internal fun syncRecoveryAction(
         lastOutcome = lastOutcome,
     )
 
+    fun alertUnlessTheAppIsOpen(): SyncRecoveryAction =
+        if (visibility == AppVisibility.FOREGROUND) SyncRecoveryAction.NONE
+        else SyncRecoveryAction.ALERT
+
     return when {
-        signedInSince == null -> SyncRecoveryAction.CLEAR_ALERT
+        signedInSince == null -> SyncRecoveryAction.CANCEL_ALERT
         health == SyncHealth.HEALTHY -> SyncRecoveryAction.NONE
+        health == SyncHealth.AUTH_EXPIRED -> alertUnlessTheAppIsOpen()
         now >= lastForcedReenqueue && now < lastForcedReenqueue + FORCED_REENQUEUE_GRACE ->
             SyncRecoveryAction.NONE
-        runContext == SyncRunContext.INSIDE_SYNC_RUN ->
-            if (visibility == AppVisibility.FOREGROUND) SyncRecoveryAction.NONE
-            else SyncRecoveryAction.ALERT
+        runContext == SyncRunContext.INSIDE_SYNC_RUN -> alertUnlessTheAppIsOpen()
         lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
         visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
         else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT

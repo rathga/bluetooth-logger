@@ -71,7 +71,7 @@ private fun runWatchdog(context: Context, runContext: SyncRunContext) {
         when (action) {
             SyncRecoveryAction.NONE, SyncRecoveryAction.FORCE_REENQUEUE ->
                 SetupNotifier.cancelSyncAlertsContradicting(context, live.health)
-            SyncRecoveryAction.CLEAR_ALERT -> SetupNotifier.cancelSyncAlerts(context)
+            SyncRecoveryAction.CANCEL_ALERT -> SetupNotifier.cancelSyncAlerts(context)
             SyncRecoveryAction.ALERT, SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT ->
                 SetupNotifier.notifySyncAlert(context, live.health)
         }
