@@ -7,9 +7,9 @@ import com.nestegg.btlogger.storage.extractLong
 import com.nestegg.btlogger.storage.extractString
 import com.nestegg.btlogger.storage.extractStringOrNull
 
-enum class SyncTrigger(val wireName: String) {
-    PERIODIC("periodic"),
-    MANUAL("manual");
+enum class SyncTrigger(val wireName: String, val unattended: Boolean) {
+    PERIODIC("periodic", true),
+    MANUAL("manual", false);
 
     companion object {
         fun fromWireName(raw: String?): SyncTrigger =
@@ -20,6 +20,7 @@ enum class SyncTrigger(val wireName: String) {
 enum class SyncOutcome(val wireName: String, val isClean: Boolean, val displayLabel: String) {
     SUCCESS("success", true, "Synced"),
     NO_EVENTS("no-events", true, "Up to date"),
+    ALREADY_RUNNING("already-running", false, "Skipped, sync already running"),
     NO_ACCOUNT("no-account", false, "Not signed in"),
     AUTH_FAILURE("auth-failure", false, "Sign-in needed"),
     IO_RETRY("io-retry", false, "Network issue, will retry"),
@@ -37,8 +38,8 @@ data class SyncAttempt(
     val outcome: SyncOutcome,
     val rowsUploaded: Int,
     val errorClass: String?,
-    val batteryExempt: Boolean,
-    val networkValidated: Boolean,
+    val batteryExempt: Boolean?,
+    val networkValidated: Boolean?,
 )
 
 internal fun SyncAttempt.toJsonLine(): String = buildString {
@@ -61,7 +62,7 @@ internal fun parseSyncAttemptOrNull(line: String): SyncAttempt? = runCatching {
     val outcome = SyncOutcome.fromWireName(extractString(line, "outcome")) ?: return null
     val rows = extractInt(line, "rows") ?: return null
     val error = extractStringOrNull(line, "error")
-    val batteryExempt = extractBoolean(line, "battery_exempt") ?: return null
-    val networkValidated = extractBoolean(line, "network_validated") ?: return null
+    val batteryExempt = extractBoolean(line, "battery_exempt")
+    val networkValidated = extractBoolean(line, "network_validated")
     SyncAttempt(ts, trigger, outcome, rows, error, batteryExempt, networkValidated)
 }.getOrNull()

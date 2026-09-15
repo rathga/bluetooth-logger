@@ -1,10 +1,95 @@
 package com.nestegg.btlogger.sync
 
-const val SYNC_STALE_THRESHOLD_MILLIS = 6L * 60 * 60 * 1000
+import java.time.Duration
+import java.time.Instant
 
-// Caller must gate on there having been at least one attempt, or a fresh install reads as stale.
-fun isSyncStale(
-    nowMillis: Long,
-    lastSuccessMillis: Long,
-    thresholdMillis: Long = SYNC_STALE_THRESHOLD_MILLIS,
-): Boolean = (nowMillis - lastSuccessMillis) >= thresholdMillis
+internal val SYNC_STALE_THRESHOLD: Duration = Duration.ofHours(6)
+
+internal val SYNC_PERIOD: Duration = Duration.ofHours(1)
+
+private val FORCED_REENQUEUE_GRACE: Duration = SYNC_PERIOD.multipliedBy(3)
+
+internal enum class NetworkStatus {
+    VALIDATED,
+    UNVALIDATED,
+}
+
+internal enum class AppVisibility {
+    FOREGROUND,
+    BACKGROUND,
+}
+
+internal enum class SyncRunContext {
+    OUTSIDE_SYNC_RUN,
+    INSIDE_SYNC_RUN,
+}
+
+internal enum class SyncHealth {
+    HEALTHY,
+    AUTH_EXPIRED,
+    STALLED,
+    OFFLINE,
+}
+
+internal fun syncHealth(
+    network: NetworkStatus,
+    now: Instant,
+    signedInSince: Instant?,
+    lastSuccess: Instant,
+    lastOutcome: SyncOutcome?,
+): SyncHealth {
+    if (signedInSince == null) return SyncHealth.HEALTHY
+
+    fun isSyncStale(): Boolean =
+        Duration.between(maxOf(lastSuccess, signedInSince), now) >= SYNC_STALE_THRESHOLD
+
+    return when {
+        lastOutcome == SyncOutcome.AUTH_FAILURE -> SyncHealth.AUTH_EXPIRED
+        !isSyncStale() -> SyncHealth.HEALTHY
+        network == NetworkStatus.VALIDATED -> SyncHealth.STALLED
+        else -> SyncHealth.OFFLINE
+    }
+}
+
+internal enum class SyncRecoveryAction {
+    NONE,
+    CANCEL_ALERT,
+    ALERT,
+    FORCE_REENQUEUE,
+    FORCE_REENQUEUE_AND_ALERT,
+}
+
+internal fun syncRecoveryAction(
+    network: NetworkStatus,
+    visibility: AppVisibility,
+    runContext: SyncRunContext,
+    now: Instant,
+    signedInSince: Instant?,
+    lastSuccess: Instant,
+    lastOutcome: SyncOutcome?,
+    lastForcedReenqueue: Instant,
+): SyncRecoveryAction {
+    val health = syncHealth(
+        network = network,
+        now = now,
+        signedInSince = signedInSince,
+        lastSuccess = lastSuccess,
+        lastOutcome = lastOutcome,
+    )
+
+    fun alertUnlessTheAppIsOpen(): SyncRecoveryAction =
+        if (visibility == AppVisibility.FOREGROUND) SyncRecoveryAction.NONE
+        else SyncRecoveryAction.ALERT
+
+    return when {
+        signedInSince == null -> SyncRecoveryAction.CANCEL_ALERT
+        health == SyncHealth.HEALTHY -> SyncRecoveryAction.NONE
+        health == SyncHealth.AUTH_EXPIRED -> alertUnlessTheAppIsOpen()
+        now >= lastForcedReenqueue && now < lastForcedReenqueue + FORCED_REENQUEUE_GRACE ->
+            SyncRecoveryAction.NONE
+        runContext == SyncRunContext.INSIDE_SYNC_RUN -> alertUnlessTheAppIsOpen()
+        lastForcedReenqueue <= lastSuccess -> SyncRecoveryAction.FORCE_REENQUEUE
+        visibility == AppVisibility.FOREGROUND -> SyncRecoveryAction.FORCE_REENQUEUE
+        else -> SyncRecoveryAction.FORCE_REENQUEUE_AND_ALERT
+    }
+}
