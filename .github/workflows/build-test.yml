@@ -23,8 +23,13 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      # Pinned, not floating: a drifting tag is how CI breaks on a day nobody
+      # touched the code. `packages` drops the default `tools`, which Google no
+      # longer serves — requesting it fails the whole step before compilation.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v3.2.2
+        with:
+          packages: 'platform-tools'
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --console=plain
